@@ -1,0 +1,2 @@
+# 上游源码保留原始空白，差异检查不要求修改第三方文件。
+vendor/usb-relay/source/** whitespace=-blank-at-eol,-blank-at-eof

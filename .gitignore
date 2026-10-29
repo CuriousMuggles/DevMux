@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Temporary OS files
+Thumbs.db
+.DS_Store
+
+# Runtime data
+commands.json
+serial-commands.json
+crash_dump.txt
+conversations/
+relay.lock
+relay-pairing-*.json
+# 跨机中转配置含本机标识与共享目录路径（环境相关），不进仓库
+relay.json
+relay-trust-*.json
+*-usb-relay.json
+*-serial.json
+
+# IDE
+.idea/
+.vscode/
+
+# Compiled binaries
+*.exe
+
+# Environment
+.env
+venv/
+.venv/
+
+# 本地工具记忆
+.workbuddy/
+windows-jobs-*/
+.agent-runtime/
+journal-state/
+
+# 内部开发记录
+DEVELOPMENT_LOG.html
+SELF_TEST_LOG.md
+docs/管理文档/
+docs/报告/

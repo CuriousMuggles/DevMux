@@ -1,0 +1,64 @@
+/* 烧写面板样式限定在独立容器，不影响既有菜单和继电器。 */
+.db-flash-panel { box-sizing: border-box; max-width: 1040px; margin: 24px auto; padding: 24px; color: #e6edf3; background: #17212e; border: 1px solid #344659; border-radius: 14px; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; }
+.db-flash-panel[hidden] { display: none; }
+.db-flash-panel * { box-sizing: border-box; }
+.db-flash-panel h2, .db-flash-panel p { margin: 0 0 12px; }
+.db-flash-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.db-flash-header p, .db-flash-help, .db-flash-panel small { color: #aebfce; }
+.db-flash-banner { padding: 10px 14px; border-left: 3px solid #e2b66c; background: #302a24; color: #ffe2ac; }
+.db-flash-panel button { flex: 0 0 auto; padding: 8px 14px; color: #e6edf3; background: #2a3c51; border: 1px solid #54708b; border-radius: 6px; cursor: pointer; white-space: nowrap; font: inherit; }
+.db-flash-panel button:hover:not(:disabled) { background: #38546e; }
+.db-flash-panel button:disabled { opacity: .45; cursor: default; }
+.db-flash-panel button.db-flash-primary { background: #166ba3; border-color: #4ba5e3; }
+.db-flash-panel input[type=text], .db-flash-panel select { min-width: 0; padding: 9px; color: #e6edf3; background: #0e1823; border: 1px solid #425a71; border-radius: 6px; font: inherit; }
+.db-flash-panel :focus-visible { outline: 2px solid #73c8ff; outline-offset: 3px; }
+.db-flash-path-row, .db-flash-files-bar, .db-flash-actions { display: flex; align-items: center; gap: 10px; margin: 8px 0 16px; flex-wrap: wrap; }
+.db-flash-path-row { margin-bottom: 6px; }
+.db-flash-path-row input { flex: 1 1 280px; }
+.db-flash-platform { margin: 0 0 14px; color: #8fd3ff; font-size: 13px; }
+.db-flash-platform:empty { display: none; }
+.db-flash-files-bar span { flex: 1 1 220px; min-width: 0; color: #aebfce; }
+.db-flash-all { display: block; padding: 10px 0; font-weight: 600; }
+.db-flash-table-scroll { overflow-x: auto; border: 1px solid #344659; border-radius: 8px; }
+.db-flash-table { width: 100%; min-width: 780px; table-layout: fixed; border-collapse: collapse; }
+.db-flash-table caption { text-align: left; padding: 10px 12px; font-weight: 600; background: #203044; }
+.db-flash-col-check { width: 54px; }
+.db-flash-col-name { width: 22%; }
+.db-flash-col-description { width: 31%; }
+.db-flash-table th, .db-flash-table td { padding: 12px 10px; text-align: left; vertical-align: middle; overflow-wrap: anywhere; border-top: 1px solid #344659; }
+.db-flash-table thead th { color: #c4d7e8; background: #203044; }
+.db-flash-table tr:nth-child(even) { background: #14202d; }
+.db-flash-table td:first-child, .db-flash-table th:first-child { text-align: center; }
+.db-flash-item select { width: 100%; }
+.db-flash-item small { display: block; padding-top: 4px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; }
+.db-flash-panel .db-flash-standard { color: #8fcef8; overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
+.db-flash-panel .db-flash-description { color: #d3dfe9; font-size: 13px; margin: 0; }
+.db-flash-panel .db-flash-file-path { margin-top: 3px; }
+.db-flash-panel .db-flash-file-path summary { color: #93bcd8; font-size: 12px; font-weight: 400; }
+.db-flash-options { margin: 18px 0; padding: 14px; border: 1px solid #425a71; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.db-flash-option { min-width: 0; padding: 12px; background: #111c28; border-radius: 6px; }
+.db-flash-option label { display: block; font-weight: 600; }
+.db-flash-option code, .db-flash-option small { display: block; margin: 5px 0; overflow-wrap: anywhere; }
+.db-flash-option code { color: #8fcef8; font-size: 12px; }
+.db-flash-option p { color: #aebfce; font-size: 12px; margin: 6px 0 0; }
+.db-flash-option select, .db-flash-option input[type=text] { width: 100%; }
+.db-flash-target { grid-column: 1 / -1; }
+.db-flash-panel .error, .db-flash-issues { color: #ffb2a9; overflow-wrap: anywhere; }
+.db-flash-panel progress { width: 100%; height: 12px; accent-color: #50aaf0; }
+.db-flash-panel details { margin-top: 16px; }
+.db-flash-panel summary { cursor: pointer; font-weight: 600; }
+.db-flash-steps { max-height: 280px; overflow: auto; padding-left: 28px; }
+.db-flash-steps li { padding: 6px 0; }
+.db-flash-steps code { display: block; color: #b0cae0; font-size: 12px; overflow-wrap: anywhere; }
+.db-flash-log { min-height: 180px; max-height: 380px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #08111a; color: #cde5ce; border-radius: 6px; font: 13px/1.5 Consolas, "Microsoft YaHei", monospace; }
+.db-remote-file-list { max-height: 320px; overflow: auto; border: 1px solid #425469; }
+.db-remote-file-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; overflow-wrap: anywhere; }
+.db-remote-file-row + .db-remote-file-row { border-top: 1px solid #344659; }
+.db-remote-file-row button { text-align: left; width: 100%; }
+@media (max-width: 680px) { .db-flash-panel { margin: 8px; padding: 16px; } .db-flash-options { grid-template-columns: minmax(0, 1fr); } }
+
+/* 主应用弹窗容器独立命名，不影响其他工具及其样式。 */
+.db-flash-overlay { position: fixed; inset: 0; z-index: 10030; padding: 18px; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .62); }
+.db-flash-overlay[hidden] { display: none; }
+.db-flash-overlay > .db-flash-panel { width: 1040px; max-width: 100%; max-height: calc(100vh - 36px); margin: 0; overflow-y: auto; }
+@media (max-width: 680px) { .db-flash-overlay { padding: 8px; } .db-flash-overlay > .db-flash-panel { max-height: calc(100vh - 16px); } }

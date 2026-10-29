@@ -1,0 +1,2243 @@
+/* ============================================================
+   DevMux - 样式
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-dark: #1e1e2e;
+  --bg-panel: #252536;
+  --bg-toolbar: #2a2a42;
+  --bg-input: #1a1a2e;
+  --border: #3a3a52;
+  --text: #cdd6f4;
+  --text-dim: #7f849c;
+  --accent: #89b4fa;
+  --accent-bg: rgba(137, 180, 250, 0.15);
+  --warn: #f9e2af;
+  --error: #f38ba8;
+  --success: #a6e3a1;
+  --tab-height: 36px;
+  --device-bar-height: 34px;
+  --toolbar-height: 40px;
+  --status-height: 26px;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-dark);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ============================================================
+   顶部标签栏
+   ============================================================ */
+.tab-bar {
+  display: flex;
+  height: var(--tab-height);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+  gap: 2px;
+}
+
+.tab-bar .tab {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.tab-bar .tab:hover {
+  color: var(--text);
+  background: var(--accent-bg);
+}
+
+.tab-bar .tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* File tab dropdown menu */
+.tab-dropdown {
+  position: fixed;
+  top: calc(var(--tab-height) + 1px);
+  left: var(--dl-left, 0);
+  min-width: 130px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  z-index: 9999;
+  overflow: hidden;
+}
+.tab-dropdown-item {
+  padding: 7px 16px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.tab-dropdown-item:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.menu-shortcut {
+  float: right;
+  margin-left: 22px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* ============================================================
+   终端查找
+   ============================================================ */
+.terminal-find-dialog {
+  position: fixed;
+  top: calc(var(--tab-height) + var(--device-bar-height) + 12px);
+  right: 18px;
+  z-index: 10002;
+  width: min(380px, calc(100vw - 28px));
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.terminal-find-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.terminal-find-header h3 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+}
+.terminal-find-device {
+  max-width: 300px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-find-close {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+}
+.terminal-find-close:hover {
+  background: rgba(243, 139, 168, 0.16);
+  color: var(--error);
+}
+.terminal-find-input {
+  width: 100%;
+  height: 31px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+}
+.terminal-find-input:focus { border-color: var(--accent); }
+.terminal-find-options {
+  display: flex;
+  gap: 14px;
+  margin: 9px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.terminal-find-options label { cursor: pointer; }
+.terminal-find-options input { vertical-align: -2px; accent-color: var(--accent); }
+.terminal-find-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.terminal-find-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-find-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.terminal-find-actions .tool-btn { padding: 5px 8px; font-size: 12px; }
+
+/* ============================================================
+   设备标签栏
+   ============================================================ */
+.device-bar {
+  display: flex;
+  align-items: center;
+  height: var(--device-bar-height);
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  gap: 6px;
+}
+
+.device-bar-label {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.device-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.device-refresh-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+.device-refresh-btn:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.device-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+
+.device-tab:hover {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.device-tab.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.device-tab .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.device-tab .dot.offline {
+  background: var(--error);
+}
+
+.device-tab .close-btn {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+}
+
+.device-tab .close-btn:hover {
+  background: var(--error);
+  color: white;
+}
+
+/* ============================================================
+   内容区
+   ============================================================ */
+#content-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.content-panel {
+  display: none;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+
+.content-panel.active {
+  display: flex;
+}
+
+/* ============================================================
+   布局工具栏
+   ============================================================ */
+.layout-toolbar {
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-height);
+  padding: 0 10px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  gap: 6px;
+}
+
+.layout-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.12s;
+}
+
+.layout-btn:hover {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.layout-btn.active {
+  background: var(--accent);
+  color: var(--bg-dark);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.layout-status {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ============================================================
+   终端容器
+   ============================================================ */
+.terminal-container {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  overflow: hidden;
+  background: #1a1a2e;
+  height: 100%;
+  min-height: 0;
+}
+
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
+  transition: border-color 0.1s;
+}
+
+.terminal-panel.highlight {
+  border-color: var(--accent);
+}
+
+.terminal-panel.minimized {
+  display: none;
+}
+
+.terminal-panel-header {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.terminal-panel-header .header-title {
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-panel-header .header-btn {
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+}
+
+.terminal-panel-header .header-btn:hover {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.terminal-panel-header .header-btn.close:hover {
+  background: var(--error);
+  color: white;
+}
+
+/**
+ * terminal-cell: the fixed-height container that holds xterm + cmd-input.
+ * Fills the panel's remaining space after the header.
+ * xterm and cmd-input share this fixed total height via flex.
+ */
+.terminal-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-xterm {
+  flex: 1 1 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Drag handle (splitter between xterm/toolbar and toolbar/cmd-input) */
+.cell-toolbar-handle {
+  flex-shrink: 0;
+  height: 3px;
+  cursor: ns-resize;
+  background: var(--border);
+  position: relative;
+  z-index: 1;
+  transition: background 0.12s;
+}
+
+.cell-toolbar-handle:hover,
+.cell-toolbar-handle.dragging {
+  background: var(--accent);
+}
+
+/* Toolbar between xterm and cmd-input */
+.cell-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.cell-toolbar-row {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px;
+  gap: 6px;
+}
+
+/* File op toggle buttons */
+.file-op-btn {
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.file-op-btn:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px rgba(137, 180, 250, 0.3);
+}
+
+.file-op-btn.upload {
+  color: #a6e3a1;
+}
+.file-op-btn.upload:hover {
+  background: rgba(166, 227, 161, 0.15);
+  border-color: #a6e3a1;
+  box-shadow: 0 0 6px rgba(166, 227, 161, 0.3);
+  color: #a6e3a1;
+}
+
+.file-op-btn.download {
+  color: #89b4fa;
+}
+.file-op-btn.download:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px rgba(137, 180, 250, 0.3);
+  color: var(--accent);
+}
+.device-diagnostic-btn {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+}
+.device-diagnostic-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.file-op-btn.edit {
+  color: #cba6f7;
+}
+.file-op-btn.edit:hover {
+  background: rgba(203, 166, 247, 0.15);
+  border-color: #cba6f7;
+  box-shadow: 0 0 6px rgba(203, 166, 247, 0.3);
+  color: #cba6f7;
+}
+
+.file-op-btn.log {
+  color: #f9e2af;
+}
+.file-op-btn.log:hover {
+  background: rgba(249, 226, 175, 0.15);
+  border-color: #f9e2af;
+  box-shadow: 0 0 6px rgba(249, 226, 175, 0.3);
+  color: #f9e2af;
+}
+
+.file-op-btn.cmd {
+  color: #89dceb;
+}
+.file-op-btn.cmd:hover {
+  background: rgba(137, 220, 235, 0.15);
+  border-color: #89dceb;
+  box-shadow: 0 0 6px rgba(137, 220, 235, 0.3);
+  color: #89dceb;
+}
+
+/* ============================================================
+   Log recording submenu
+   ============================================================ */
+.log-submenu {
+  display: none;
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+}
+
+.log-submenu-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-submenu-row .log-save-path {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+  height: 24px;
+  box-sizing: border-box;
+}
+.log-submenu-row .log-save-path:focus {
+  border-color: var(--accent);
+}
+.log-submenu-row .log-save-path:disabled {
+  opacity: 0.5;
+}
+
+.log-submenu-row .log-browse {
+  flex-shrink: 0;
+  width: 26px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+  box-sizing: border-box;
+}
+.log-submenu-row .log-browse:hover {
+  background: var(--accent-bg);
+}
+.log-submenu-row .log-browse:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.log-submenu-row .log-timestamp-toggle {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+.log-submenu-row .log-timestamp-toggle:hover {
+  background: var(--accent-bg);
+}
+.log-submenu-row .log-timestamp-toggle.selected {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.log-submenu-row .log-timestamp-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.log-submenu-row .log-toggle {
+  flex-shrink: 0;
+  width: 60px;
+  height: 24px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  transition: background 0.12s, color 0.12s;
+  box-sizing: border-box;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+.log-submenu-row .log-toggle.primary {
+  background: #a6e3a1;
+  color: #1e1e2e;
+  border-color: #a6e3a1;
+}
+.log-submenu-row .log-toggle.primary:hover {
+  background: #94d88f;
+}
+.log-submenu-row .log-toggle.danger {
+  background: #f38ba8;
+  color: #1e1e2e;
+  border-color: #f38ba8;
+}
+.log-submenu-row .log-toggle.danger:hover {
+  background: #e67a94;
+}
+
+/* ============================================================
+   Commands popup
+   ============================================================ */
+.command-popup {
+  display: none;
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+  padding: 6px;
+}
+
+.cmd-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 0 4px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.cmd-popup-add {
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+.cmd-popup-add:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.cmd-popup-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.cmd-popup-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  min-width: 80px;
+  max-width: 150px;
+  transition: all 0.12s;
+  text-align: left;
+  gap: 1px;
+}
+.cmd-popup-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.cmd-popup-btn .cmd-btn-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 11px;
+}
+.cmd-popup-btn .cmd-btn-cmd {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Group selector inside popup */
+.cmd-group-select {
+  font-size: 11px;
+  background: var(--bg-toolbar);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  max-width: 100px;
+  cursor: pointer;
+}
+.cmd-popup-group-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: all 0.12s;
+}
+.cmd-popup-group-btn:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.cmd-popup-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+/* Group management dialog */
+.cmd-group-mgr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.cmd-group-mgr-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cmd-group-mgr-name {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-toolbar);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.cmd-group-mgr-name:focus {
+  border-color: var(--accent);
+}
+.cmd-group-del {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.cmd-group-del:hover { background: rgba(255,80,80,0.15); color: #e5534b; }
+.cmd-group-add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+}
+.cmd-group-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Context menu */
+.cmd-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  overflow: hidden;
+  min-width: 110px;
+}
+.cmd-context-item {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cmd-context-item:hover {
+  background: var(--accent-bg);
+}
+
+/* Edit dialog overlay */
+.cmd-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cmd-edit-dialog {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.cmd-edit-dialog h3 {
+  font-size: 14px;
+  color: var(--accent);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+/* In-app remote text editor */
+.inline-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(0,0,0,0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.inline-edit-dialog {
+  width: min(900px, 100%);
+  height: min(680px, 90vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.inline-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+}
+.inline-edit-title {
+  flex: 1;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.inline-edit-close {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: 13px;
+}
+.inline-edit-close:hover {
+  color: var(--text);
+  background: var(--accent-bg);
+}
+.inline-edit-path {
+  padding: 6px 14px;
+  color: var(--text-dim);
+  font: 11px/1.2 'Cascadia Code', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--border);
+}
+.inline-edit-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 14px;
+  background: #11111b;
+  color: var(--text);
+  font: 13px/1.55 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  tab-size: 4;
+}
+.inline-edit-text:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.inline-edit-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+}
+.inline-edit-status {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inline-edit-save {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+}
+.inline-edit-save:hover {
+  background: var(--accent);
+  color: var(--bg-dark);
+}
+
+/* About dialog */
+.about-dialog {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 320px;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  text-align: center;
+}
+.about-dialog h3 {
+  font-size: 15px;
+  color: var(--accent);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+.about-logo {
+  font-size: 40px;
+  margin: 8px 0 12px;
+}
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+}
+.about-key {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+.about-btns {
+  display: flex;
+  justify-content: center;
+}
+.cmd-edit-dialog label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 8px 0 3px;
+}
+.cmd-edit-dialog input {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text);
+  outline: none;
+  box-sizing: border-box;
+}
+.cmd-edit-dialog input:focus {
+  border-color: var(--accent);
+}
+.cmd-edit-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 14px;
+}
+.cmd-edit-btns button {
+  padding: 5px 14px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.12s;
+  background: transparent;
+  color: var(--text);
+}
+.cmd-edit-btns button:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+.cmd-edit-btns button.primary {
+  background: var(--accent);
+  color: var(--bg-dark);
+  border-color: var(--accent);
+}
+.cmd-edit-btns button.primary:hover {
+  background: #7fa4ea;
+}
+
+/* Expandable file-ops form */
+.cell-toolbar-file-ops {
+  display: none;
+  flex-shrink: 0;
+  padding: 4px 6px 6px;
+  gap: 4px;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.file-ops-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.file-ops-inner input {
+  flex: 1;
+  min-width: 60px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #11111b;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.file-ops-inner input:focus {
+  border-color: var(--accent);
+}
+
+.file-ops-inner .fo-arrow {
+  color: var(--text-dim);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.file-ops-inner button {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.file-ops-inner button:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.fo-local-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fo-local-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 108px;
+  padding: 4px;
+  gap: 2px;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.file-ops-inner .fo-local-picker-menu button {
+  width: 100%;
+  padding: 0 7px;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.file-ops-inner .fo-exec {
+  color: #a6e3a1;
+}
+
+.file-ops-inner .fo-exec:hover {
+  background: rgba(166, 227, 161, 0.15);
+  color: #a6e3a1;
+}
+
+/* Command input area at bottom of cell */
+.terminal-cmd-input {
+  flex: 0 0 auto;
+  background: #11111b;
+  min-height: 34px;
+  max-height: 50vh;
+  overflow: hidden;
+}
+
+.terminal-cmd-textarea {
+  width: 100%;
+  height: 100%;
+  padding: 6px 10px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  resize: none;
+  line-height: 1.5;
+  min-height: 29px;
+  overflow-y: auto;
+}
+
+.terminal-cmd-textarea::placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.terminal-cmd-textarea:focus {
+  color: var(--accent);
+}
+
+/* 当面板最小化时隐藏命令输入 */
+.terminal-panel.minimized .terminal-cmd-input {
+  display: none;
+}
+
+/* Layout modes */
+.layout-grid .terminal-panel {
+  flex: 1 1 50%;
+  min-width: 300px;
+  min-height: 150px;
+}
+
+.terminal-container.layout-horizontal {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.layout-horizontal .terminal-panel {
+  flex: 1 0 220px;
+  min-width: 220px;
+}
+
+.layout-vertical .terminal-panel {
+  flex: 1 1 100%;
+  max-height: 50%;
+}
+
+.layout-single .terminal-panel {
+  flex: 1 1 100%;
+}
+
+/* 当只有 1 个设备时, 所有模式下都占满 */
+.terminal-container.device-count-1 .terminal-panel {
+  flex: 1 1 100% !important;
+  max-height: none !important;
+}
+
+/* ============================================================
+   面板工具栏 (共享样式)
+   ============================================================ */
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-height);
+  padding: 0 10px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tool-btn {
+  padding: 4px 12px;
+  /* 按钮一律按内容定宽、永不折行：按钮的文字是固定的，它的尺寸不该随同行
+     其他内容（比如状态说明的长短）变来变去。 */
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.12s;
+}
+
+.tool-btn:hover { background: var(--accent-bg); }
+.tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tool-btn.primary { background: var(--accent); color: var(--bg-dark); border-color: var(--accent); }
+
+.tool-select {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.tool-input {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.tool-input:focus {
+  border-color: var(--accent);
+}
+
+.tool-label {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.panel-output {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: #1a1a2e;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============================================================
+   快捷命令
+   ============================================================ */
+.commands-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+}
+
+.cmd-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.12s;
+}
+
+.cmd-btn:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.cmd-custom {
+  margin: 0 10px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  resize: vertical;
+  outline: none;
+  min-height: 40px;
+}
+
+.cmd-custom:focus { border-color: var(--accent); }
+
+/* ============================================================
+   文件管理
+   ============================================================ */
+.file-path-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* ============================================================
+   设置
+   ============================================================ */
+.settings-group {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-group h3 {
+  font-size: 14px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.setting-row label {
+  color: var(--text-dim);
+  font-size: 12px;
+  min-width: 80px;
+}
+
+.settings-group p {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   状态栏
+   ============================================================ */
+#status-bar {
+  display: flex;
+  align-items: center;
+  height: var(--status-height);
+  flex: 0 0 var(--status-height);
+  flex-wrap: nowrap;
+  overflow: hidden;
+  padding: 0 10px;
+  background: var(--bg-toolbar);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  gap: 16px;
+}
+
+#status-bar span {
+  color: var(--text-dim);
+}
+
+/* Toast notifications for file ops */
+.toast-container {
+  position: fixed;
+  bottom: 28px;
+  right: 12px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+  pointer-events: none;
+  max-height: 60vh;
+  overflow-y: hidden;
+}
+
+.toast {
+  pointer-events: auto;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 220px;
+  max-width: 420px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  animation: toast-in 0.2s ease-out;
+  overflow: hidden;
+}
+
+.toast-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.toast-header .toast-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.toast-header .toast-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.toast-header .toast-close:hover {
+  color: var(--text);
+}
+
+.toast-body {
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  color: var(--text-dim);
+}
+
+.toast.success { border-left: 3px solid #a6e3a1; }
+.toast.error   { border-left: 3px solid #f38ba8; }
+.toast.info    { border-left: 3px solid #89b4fa; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Device remote path browser dropdown
+   ============================================================ */
+.fo-remote-wrap {
+  display: flex;
+  flex: 1;
+  min-width: 60px;
+  position: relative;
+  align-items: center;
+}
+
+.fo-remote-wrap input {
+  flex: 1;
+  min-width: 50px;
+}
+
+.fo-remote-wrap .fo-browse-remote {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: background 0.12s, color 0.12s;
+}
+
+.fo-remote-wrap .fo-browse-remote:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* Device browser popup — fixed overlay, never invades terminal cell layout */
+.device-browser {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  min-width: 160px;
+  width: 420px;
+  background: #11111b;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 360px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  animation: browser-fade-in 0.15s ease-out;
+  flex-direction: column;
+}
+
+.device-browser.select-mode .dev-browser-item.file.selected {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.device-browser.select-mode .dev-browser-item.file.selected::after {
+  content: ' ✓';
+  color: #a6e3a1;
+  font-weight: bold;
+}
+
+@keyframes browser-fade-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dev-browser-hint {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+}
+
+.dev-browser-path {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dev-browser-path-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-browser-path-btns {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.dev-browser-path-btns button {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.dev-browser-path-btns button:hover {
+  background: var(--accent-bg);
+}
+
+/* ADB 诊断 */
+.diagnostic-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.diagnostic-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: min(760px, 100%);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-dark);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+.diagnostic-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.diagnostic-header h3 {
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: 15px;
+}
+.diagnostic-header p {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.diagnostic-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 17px;
+}
+.diagnostic-close:hover { color: var(--error); }
+.diagnostic-controls {
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.diagnostic-progress {
+  min-height: 20px;
+  color: var(--text-dim);
+  font-size: 12px;
+  margin: 4px 0 8px;
+}
+.diagnostic-results {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 460px;
+  overflow: auto;
+}
+.diagnostic-primary,
+.diagnostic-check {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  padding: 8px 10px;
+}
+.diagnostic-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 3px solid var(--success);
+}
+.diagnostic-priority-p0 { border-left-color: var(--error); }
+.diagnostic-priority-p1 { border-left-color: var(--warn); }
+.diagnostic-priority-p2 { border-left-color: var(--warn); }
+.diagnostic-counts {
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 0 2px;
+}
+.diagnostic-check summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+.diagnostic-status-pass summary { color: var(--success); }
+.diagnostic-status-warn summary { color: var(--warn); }
+.diagnostic-status-fail summary { color: var(--error); }
+.diagnostic-status-cancelled summary,
+.diagnostic-status-skip summary { color: var(--text-dim); }
+.diagnostic-advice {
+  color: var(--text);
+  line-height: 1.5;
+  margin-top: 7px;
+  white-space: pre-wrap;
+}
+.diagnostic-command,
+.diagnostic-output {
+  margin: 7px 0 0;
+  padding: 7px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font: 11px/1.45 'Cascadia Code', 'Consolas', monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.edit-ops-inner .edit-action-btn {
+  width: auto;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+
+.dev-browser-path-btns button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dev-browser-path-btns button:disabled:hover {
+  background: transparent;
+}
+
+.dev-browser-loading,
+.dev-browser-error,
+.dev-browser-empty {
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.dev-browser-error {
+  color: var(--error);
+}
+
+.dev-browser-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Custom scrollbar for device browser */
+.device-browser::-webkit-scrollbar {
+  width: 6px;
+}
+
+.device-browser::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.2);
+  border-radius: 3px;
+}
+
+.device-browser::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+  border: none;
+  min-height: 32px;
+}
+
+.device-browser::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+.dev-browser-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+
+
+.dev-browser-item {
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.08s;
+}
+
+.dev-browser-item:hover {
+  background: var(--accent-bg);
+}
+
+.dev-browser-item .browser-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+  width: 16px;
+  text-align: center;
+}
+
+.dev-browser-item.dir:hover {
+  color: var(--accent);
+}
+
+.dev-browser-item.file:hover {
+  color: #a6e3a1;
+}
+
+.dev-browser-item.file-selectable:hover {
+  color: #a6e3a1;
+}
+
+.dev-browser-item.dir-selectable {
+  color: #a6e3a1;
+}
+
+.dev-browser-item.dir-selectable:hover {
+  color: #a6e3a1;
+  background: rgba(166, 227, 161, 0.15);
+}
+
+.dev-browser-item.file-disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.browser-select-dir {
+  color: var(--success);
+  font-size: 10px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.dev-browser-item:hover .browser-select-dir {
+  opacity: 1;
+}
+
+/* ============================================================
+   滚动条
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+/* ============================================================
+   响应式 - body 布局
+   ============================================================ */
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================
+   跨机中转（角色徽标、远端设备标识、首连确认）
+   ============================================================ */
+.status-relay {
+  padding: 1px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-size: 11px;
+  flex: 1 1 420px;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#status-devices, #status-layout { flex: 0 0 auto; }
+.status-relay[hidden] { display: none; }
+.status-relay.ok   { border-color: var(--success); color: var(--success); }
+.status-relay.warn { border-color: var(--warn);    color: var(--warn); }
+.status-relay.bad  { border-color: var(--error);   color: var(--error); }
+.status-relay.off  { opacity: 0.6; }
+
+/* 两端共用连接灯：红色无有效心跳，黄色在线待连接，绿色验证成功。 */
+.status-relay::before, .relay-link-light::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  vertical-align: middle;
+}
+.status-relay.bad::before, .relay-link-light.bad::before { background: var(--error); }
+.status-relay.warn::before, .relay-link-light.warn::before { background: var(--warn); }
+.status-relay.ok::before, .relay-link-light.ok::before { background: var(--success); }
+
+.setting-hint {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.relay-warning {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--warn);
+  background: rgba(249, 226, 175, 0.12);
+  color: var(--warn);
+  font-size: 11px;
+}
+
+/* 远端设备：标签与面板都要一眼看出「不是本机的设备」 */
+.device-tab.remote {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.device-tab.remote .dot.remote { background: var(--accent); }
+.device-tab.offline { opacity: 0.55; }
+.device-tab.offline .dot { background: var(--error); }
+.device-tab .device-tab-label { overflow: hidden; text-overflow: ellipsis; max-width: 26ch; }
+
+.header-badge.remote-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 10px;
+}
+.terminal-panel-header.remote { border-bottom-color: var(--accent); }
+
+/* 跨机下不可用的操作：禁用并说明原因，不留给用户去猜 */
+.remote-disabled {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+}
+.remote-op-notice {
+  margin: 4px 0 6px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--warn);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.relay-confirm-dialog { width: min(620px, 100%); }
+.relay-confirm-body { margin: 8px 0; }
+.relay-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12px;
+}
+.relay-confirm-row span { color: var(--text-dim); }
+.relay-confirm-row b { color: var(--text); font-weight: 600; }
+
+/* 跨机中转配置弹窗（入口：菜单栏「工具」）。配置项比诊断弹窗多，要能滚动。 */
+.relay-config-dialog {
+  width: min(760px, 100%);
+  overflow-y: auto;
+}
+
+/* 三步引导把当前该在哪一端做什么放在配置旁边。 */
+.relay-steps { display: flex; gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.relay-steps li { flex: 1; padding: 9px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-dim); text-align: center; font-size: 12px; }
+.relay-steps li.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.relay-steps li.complete { color: var(--text); }
+.relay-section-title { margin: 16px 0 8px; color: var(--text); font-size: 13px; font-weight: 600; }
+.relay-section-title span { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--text-dim); }
+.relay-next-action { padding: 10px; border-left: 3px solid var(--accent); background: var(--bg-panel); color: var(--text); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.relay-advanced { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.relay-advanced summary { cursor: pointer; color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
+
+/* 「当前生效」那一行。表单是「你想改成什么」，这行是「现在真正在跑什么」——
+   两者必须能分别看见，否则改了角色没保存（或没生效）时用户只会以为软件坏了。 */
+.relay-effective {
+  margin: 12px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.relay-effective .relay-effective-role { color: var(--accent); font-weight: 600; }
+.relay-effective .relay-effective-dim { color: var(--text-dim); }
+.relay-effective .relay-effective-pending { color: var(--warn); font-weight: 600; }
+.relay-effective.pending { border-left-color: var(--warn); }
+.relay-effective.off { border-left-color: var(--text-dim); }
+
+/* 多实例隔离说明：本窗口用的是独立临时配置（默认配置被另一实例占用）时显示。 */
+.relay-config-notice {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  background: rgba(249, 226, 175, 0.08);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* ----------------------------------------------------------------
+   弹窗里的表单与按钮。
+   工具条上的 .tool-btn/.tool-input 是为 30px 高的紧凑条设计的；原样搬进
+   760px 宽的弹窗后，输入框只有内容宽（右侧一大片空白），按钮瘦小且挤在
+   复选框旁边，看起来又碎又乱。这里只在三个中转弹窗的范围内重排：
+   输入/下拉占满剩余宽度，按钮统一成有分量、有留白的可点区域。
+   ---------------------------------------------------------------- */
+.relay-config-dialog .setting-row > .tool-input,
+.relay-config-dialog .setting-row > .tool-select {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: 5px 10px;
+}
+
+#relay-deployment-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+}
+.relay-config-dialog .setting-row > label { flex-shrink: 0; }
+
+/* 状态说明（#relay-state、#relay-config-path 等）是这一行里**唯一**可伸缩的东西：
+   文本长了就该它自己缩（省略号截断），而不是去挤按钮。它的长短取决于运行时状态
+   （「未启用」两个字 vs 一长串提示），而同一排按钮必须长得一样 —— 否则同一个 exe
+   的两个窗口里，按钮会一个单行一个两行，看起来像两个不同的软件。
+   注意：这里**不能**给 #relay-refresh 留 margin-left:auto —— 自动外边距会跟
+   flex-grow 抢空闲空间，文本短时按钮靠右、文本长时按钮靠左，位置又飘了。 */
+.relay-config-dialog .setting-row > .tool-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.relay-config-dialog .tool-btn,
+.relay-confirm-dialog .tool-btn,
+.relay-root-choice-dialog .tool-btn {
+  flex: 0 0 auto;
+  padding: 6px 18px;
+  min-width: 96px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  text-align: center;
+}
+.relay-config-dialog .tool-btn:hover,
+.relay-confirm-dialog .tool-btn:hover,
+.relay-root-choice-dialog .tool-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.relay-config-dialog .tool-btn.primary,
+.relay-confirm-dialog .tool-btn.primary,
+.relay-root-choice-dialog .tool-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #11111c;
+}
+.relay-config-dialog .tool-btn.primary:hover,
+.relay-confirm-dialog .tool-btn.primary:hover,
+.relay-root-choice-dialog .tool-btn.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.12);
+}
+.relay-config-dialog .tool-btn.danger,
+.relay-root-choice-dialog .tool-btn.danger {
+  color: var(--error);
+  border-color: rgba(243, 138, 168, 0.55);
+}
+.relay-config-dialog .tool-btn.danger:hover,
+.relay-root-choice-dialog .tool-btn.danger:hover {
+  border-color: var(--error);
+  background: rgba(243, 138, 168, 0.12);
+}
+
+/* 「目录里已有中转数据」的选择框。 */
+.relay-root-choice-dialog { width: min(560px, 100%); }
+.relay-root-files {
+  margin: 12px 0;
+  padding-left: 22px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.9;
+}
+.relay-root-files code { color: var(--accent); }
+.relay-root-note {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.relay-choice-actions { justify-content: flex-end; gap: 10px; }
+
+/* 共享终端控制权：状态与接管按钮保持一行。 */
+.terminal-control-tools { display:inline-flex; align-items:center; gap:6px; font-size:12px; white-space:nowrap; }
+.terminal-control-tools .tool-btn { padding:2px 7px; min-width:0; }
+/* PowerShell 选择窗口与交互终端；不展示 Agent 任务。 */
+.powershell-select-dialog { width: min(680px, 90vw); }
+.powershell-select-dialog .tool-select { min-width: 0; flex: 1; }
+.powershell-terminal-status { color: var(--text-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 继电器工具：保留设备连接、逐路开关和全部开关的熟悉布局。 */
+.usb-relay-dialog { width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 18px; }
+.usb-relay-dialog > * { flex-shrink: 0; }
+.remote-tool-context { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.remote-tool-target-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.remote-tool-target-row > label { flex: 1 1 220px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.remote-tool-target-row select { flex: 1; min-width: 0; }
+.remote-tool-status { font-size: 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.remote-tool-permission { font-size: 12px; }
+.usb-relay-diagnostic-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.usb-relay-diagnostic-row input { flex: 1 1 160px; min-width: 0; }
+#usb-relay-diagnostics { font-size: 12px; color: var(--text-secondary); }
+#usb-relay-diagnostics summary { cursor: pointer; }
+#usb-relay-diagnostics p { margin: 8px 0; }
+.usb-relay-subtitle { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
+.usb-relay-dialog .tool-btn { white-space: nowrap; min-width: 72px; padding: 7px 12px; }
+.usb-relay-dialog .tool-btn:disabled { opacity: .4; cursor: not-allowed; }
+.usb-relay-dialog .tool-btn:focus-visible, .usb-relay-dialog input:focus-visible, .usb-relay-dialog select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.usb-relay-dialog .tool-btn.primary { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+.usb-relay-config { padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; background: var(--bg-input); }
+.usb-relay-config > label { display: block; margin-bottom: 8px; }
+.usb-relay-path-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.usb-relay-path-row input { flex: 1 1 180px; width: auto; min-width: 0; }
+.usb-relay-config p { margin-top: 8px; color: var(--text-dim); font-size: 11px; overflow-wrap: anywhere; }
+.usb-relay-device-row { display: flex; align-items: center; gap: 10px; }
+.usb-relay-device-row select { min-width: 0; flex: 1; }
+.usb-relay-connection { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 12px; margin: 12px 0 18px; }
+#usb-relay-connection-state { display: flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; }
+.usb-relay-channel-head { display: flex; align-items: center; justify-content: space-between; color: var(--text-dim); margin-bottom: 8px; }
+.usb-relay-channel-head .tool-btn { padding: 4px 10px; }
+.usb-relay-channels { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.usb-relay-channel { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(48px, 76px) minmax(64px, 90px) minmax(48px, 76px); align-items: center; gap: 8px; padding: 4px 12px; background: var(--bg-input); }
+.usb-relay-channel .tool-btn { min-width: 0; padding: 4px 6px; }
+.usb-relay-channel + .usb-relay-channel { border-top: 1px solid var(--border); }
+.usb-relay-channel-name { font-weight: 500; white-space: nowrap; }
+.usb-relay-channel-state { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.usb-relay-led { display: inline-block; width: 12px; height: 12px; flex: 0 0 12px; border-radius: 3px; background: var(--text-dim); }
+.usb-relay-led.on { background: #51cd80; box-shadow: 0 0 8px #51cd8025; }
+.usb-relay-led.off { background: #ed6868; }
+.usb-relay-all { display: flex; gap: 12px; margin: 16px 0 12px; }
+.usb-relay-all .tool-btn { flex: 1; padding: 10px; }
+.usb-relay-legend { display: flex; justify-content: center; gap: 16px; font-size: 11px; color: var(--text-dim); }
+.usb-relay-legend > span { display: flex; gap: 5px; align-items: center; }
+.usb-relay-note { color: var(--text-dim); font-size: 11px; line-height: 1.7; margin: 12px 0 8px; }
+#usb-relay-message { border-top: 1px solid var(--border); padding-top: 10px; line-height: 1.6; overflow-wrap: anywhere; min-height: 32px; }
+#usb-relay-message.error { color: var(--error); }
+.usb-relay-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 420px) {
+  .usb-relay-dialog { padding: 12px; }
+  .usb-relay-channel { grid-template-columns: 1fr 60px 65px 60px; padding: 8px; gap: 4px; }
+  .usb-relay-dialog .tool-btn { min-width: 0; padding: 7px; }
+  .usb-relay-connection { gap: 6px; }
+  .usb-relay-channel-state { font-size: 11px; gap: 4px; }
+}
+
+/* 清理结果和确认路径包含长文件名，窄窗口仍可完整阅读。 */
+#relay-clear-cache-result, #relay-cache-confirm-path { overflow-wrap: anywhere; }
+
+/* 列编辑按逻辑行定位，长命令使用水平滚动；禁用连字保证列宽一致。 */
+.terminal-cmd-textarea { white-space: pre; overflow: auto; tab-size: 4; font-kerning: none; font-variant-ligatures: none; }
+.command-column-overlay { position: fixed; z-index: 2147483646; pointer-events: none; }

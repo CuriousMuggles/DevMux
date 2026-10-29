@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>独立终端</title><link rel="stylesheet" href="vendor/xterm.css?v=52"><link rel="stylesheet" href="style.css?v=52">
+<link rel="stylesheet" href="tool-floating-window.css?v=55">
+<style>
+html,body,#desktop-host {width:100%;height:100%;margin:0;overflow:hidden;}
+#desktop-host>.terminal-panel {width:100%;height:100%;display:flex;}
+#desktop-message {position:absolute;inset:0;padding:20px;color:#cdd6f4;background:#1a1a2e;z-index:5;}
+.terminal-dock[hidden] {display:none;}
+</style><script>const WS_PORT=__WS_PORT__;</script></head>
+<body><div id="desktop-host"></div><div id="desktop-message">正在接入原终端…</div>
+<script src="vendor/xterm.js?v=52"></script><script src="vendor/xterm-addon-fit.js?v=52"></script>
+  <script src="command-column-editor.js?v=53"></script>
+<script src="desktop-terminal.js?v=55"></script></body></html>

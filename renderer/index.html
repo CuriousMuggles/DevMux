@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>ADB Manager v__APP_VERSION__</title>
+  <script>const WS_PORT = __WS_PORT__; const APP_VERSION = '__APP_VERSION__'; const MIJIA_PAGE_TOKEN = '__MIJIA_PAGE_TOKEN__';</script>
+  <title>DevMux v__APP_VERSION__</title>
+  <script>const WS_PORT = __WS_PORT__; const APP_VERSION = '__APP_VERSION__';</script>
+  <link rel="stylesheet" href="vendor/xterm.css?v=52">
+  <link rel="stylesheet" href="style.css?v=52">
+  <link rel="stylesheet" href="db-flash.css?v=52">
+  <link rel="stylesheet" href="tool-floating-window.css?v=55">
+  <link rel="stylesheet" href="mijia.css?v=52">
+</head>
+<body>
+  <!-- 顶部标签栏 -->
+  <div id="top-tab-bar" class="tab-bar">
+    <div class="tab" id="file-tab" data-tab="file">文件</div>
+    <div id="file-menu" class="tab-dropdown" style="display:none">
+      <div class="tab-dropdown-item" id="file-find">查找 <span class="menu-shortcut">Ctrl+F</span></div>
+      <div class="tab-dropdown-item" id="file-restart">重启应用</div>
+    </div>
+    <div class="tab active" id="window-tab" data-tab="terminal">窗口</div>
+    <div id="window-menu" class="tab-dropdown" style="display:none">
+      <div class="tab-dropdown-item" id="window-powershell">PowerShell…</div>
+      <div class="tab-dropdown-item" id="window-serial">Serial（串口）…</div>
+    </div>
+    <div class="tab" id="tools-tab" data-tab="tools">工具</div>
+    <div id="tools-menu" class="tab-dropdown" style="display:none">
+      <div class="tab-dropdown-item" id="tools-mijia">米家设备…</div>
+      <div class="tab-dropdown-item" id="tools-usb-relay">继电器控制…</div>
+      <div class="tab-dropdown-item" id="tools-relay">跨机中转配置…</div>
+      <div class="tab-dropdown-item" id="tools-db-flash" role="button" tabindex="0">DB 固化烧写…</div>
+    </div>
+    <div class="tab" data-tab="settings">设置</div>
+    <div class="tab" id="help-tab" data-tab="help">帮助</div>
+    <div id="help-menu" class="tab-dropdown" style="display:none">
+      <div class="tab-dropdown-item" id="help-about">关于</div>
+    </div>
+  </div>
+
+  <!-- 设备标签栏 -->
+  <div id="device-tab-bar" class="device-bar">
+    <div class="device-bar-label">设备:</div>
+    <div id="device-tabs" class="device-tabs"></div>
+    <button id="device-refresh-btn" class="device-refresh-btn" title="重新添加已连接的隐藏设备">↻</button>
+    <button id="device-diagnostic-btn" class="device-diagnostic-btn" title="检查本机 ADB 与设备连接状态">⚕ ADB 诊断</button>
+  </div>
+
+  <!-- 内容区 -->
+  <div id="content-area">
+    <!-- 终端布局 -->
+    <div id="panel-terminal" class="content-panel active">
+      <div id="layout-toolbar" class="layout-toolbar">
+        <button class="layout-btn active" data-layout="grid">网格</button>
+        <button class="layout-btn" data-layout="horizontal" title="所有设备保持在同一行；设备较多时可横向滚动。两台设备时与网格布局相同">水平</button>
+        <button class="layout-btn" data-layout="vertical">垂直</button>
+        <button class="layout-btn" data-layout="single">单屏</button>
+        <button class="layout-btn layout-reset-btn" id="layout-reset-btn" title="恢复初始布局">↺ 恢复布局</button>
+        <span class="layout-status" id="layout-status">0 台设备</span>
+      </div>
+      <div id="terminal-container" class="terminal-container"></div>
+    </div>
+
+    <!-- 设置 -->
+    <div id="panel-settings" class="content-panel">
+      <div class="settings-group">
+        <h3>终端设置</h3>
+        <div class="setting-row">
+          <label>字体大小:</label>
+          <input id="set-font-size" type="number" class="tool-input" value="13" min="8" max="32">
+        </div>
+        <div class="setting-row">
+          <label>最大设备数:</label>
+          <input id="set-max-devices" type="number" class="tool-input" value="6" min="1" max="20">
+        </div>
+      </div>
+      <div class="settings-group">
+        <h3>扩展工具</h3>
+        <p class="tool-label">勾选要在“工具”菜单显示的扩展工具，包含米家设备、继电器、跨机中转和 DB 烧写。取消勾选不影响已有任务。</p>
+        <div id="extension-tool-options"></div>
+        <p id="extension-tool-save-status" class="tool-label" role="status"></p>
+      </div>
+      <div class="settings-group">
+        <h3>调试日志</h3>
+        <div class="setting-row">
+          <button id="debug-refresh" class="tool-btn">刷新日志</button>
+          <button id="debug-clear" class="tool-btn">清空日志</button>
+          <span class="tool-label">日志文件: devmux.log</span>
+        </div>
+        <pre id="debug-output" class="panel-output" style="font-size:11px; max-height:200px;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADB 诊断弹窗：从设备栏直接进入，避免与持久化设置混在一起。 -->
+  <div id="diag-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="diag-title">
+    <div class="diagnostic-dialog">
+      <div class="diagnostic-header">
+        <div>
+          <h3 id="diag-title">ADB 诊断</h3>
+          <p>只读取本机 ADB 与设备状态，不会重启 ADB server 或修改设备。</p>
+        </div>
+        <button id="diag-close" class="diagnostic-close" title="关闭诊断">✕</button>
+      </div>
+      <div class="setting-row diagnostic-controls">
+        <label for="diag-device">目标设备:</label>
+        <select id="diag-device" class="tool-select">
+          <option value="">不检查特定设备</option>
+        </select>
+        <button id="diag-start" class="tool-btn primary">开始 ADB 诊断</button>
+        <button id="diag-cancel" class="tool-btn" disabled>取消</button>
+        <button id="diag-copy" class="tool-btn" disabled>复制报告</button>
+      </div>
+      <div id="diag-progress" class="diagnostic-progress">尚未运行诊断。</div>
+      <div id="diag-results" class="diagnostic-results" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- 终端查找窗口：仅在当前选中的设备终端缓冲区中查找。 -->
+  <div id="terminal-find-dialog" class="terminal-find-dialog" style="display:none" role="dialog" aria-modal="false" aria-labelledby="terminal-find-title">
+    <div class="terminal-find-header">
+      <div>
+        <h3 id="terminal-find-title">查找</h3>
+        <div id="terminal-find-device" class="terminal-find-device">未选择设备</div>
+      </div>
+      <button id="terminal-find-close" class="terminal-find-close" title="关闭查找">✕</button>
+    </div>
+    <input id="terminal-find-input" class="terminal-find-input" type="text" placeholder="输入要查找的字符串" spellcheck="false" autocomplete="off">
+    <div class="terminal-find-options">
+      <label><input id="terminal-find-case" type="checkbox"> 区分大小写</label>
+      <label><input id="terminal-find-whole" type="checkbox"> 全字匹配</label>
+    </div>
+    <div class="terminal-find-footer">
+      <span id="terminal-find-status" class="terminal-find-status" aria-live="polite">输入字符串开始查找</span>
+      <div class="terminal-find-actions">
+        <button id="terminal-find-prev" class="tool-btn">查找上一个</button>
+        <button id="terminal-find-next" class="tool-btn primary">查找下一个</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 跨机中转配置：入口在菜单栏「工具」下。做成弹窗而不是设置页里的常驻区块，
+       是因为它是一次性配置 + 看状态的地方，不该占着设置页的视线。 -->
+  <div id="relay-config-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="relay-config-title">
+    <div class="diagnostic-dialog relay-config-dialog">
+      <div class="diagnostic-header">
+        <div>
+          <h3 id="relay-config-title">跨机中转</h3>
+          <p>两端选择同一个共享目录：主控端管理设备，从机共享设备。部署标识可以不同。</p>
+        </div>
+        <button id="relay-config-close" class="diagnostic-close" title="关闭">✕</button>
+      </div>
+      <!-- 当前**实际生效**的角色与标识：由运行中的中转节点上报，与下面的表单无关。
+           表单是「你想改成什么」，这条是「现在跑的是什么」，两者不一致时提示未生效。 -->
+      <div id="relay-effective" class="relay-effective">尚未读取中转状态。</div>
+      <div id="relay-config-notice" class="relay-config-notice" hidden></div>
+      <ol class="relay-steps" aria-label="跨机连接步骤">
+        <li id="relay-step-config">1. 配置本机</li>
+        <li id="relay-step-confirm">2. 主控确认连接</li>
+        <li id="relay-step-use">3. 管理设备</li>
+      </ol>
+      <div id="relay-next-action" class="relay-next-action" role="status" aria-live="polite"></div>
+      <p class="relay-section-title">1. 配置本机 <span>两端都要启用并保存；角色分别选择主控端和从机。</span></p>
+      <div class="setting-row">
+        <label><input id="relay-enabled" type="checkbox"> 启用跨机中转</label>
+        <button id="relay-refresh" class="tool-btn">刷新状态</button>
+        <button id="relay-save" class="tool-btn primary">保存并生效</button>
+        <span id="relay-state" class="tool-label">未启用</span>
+      </div>
+      <div id="relay-warning" class="relay-warning" hidden></div>
+      <div class="setting-row">
+        <label>本机角色:</label>
+        <select id="relay-role" class="tool-select">
+          <option value="master">主控端（本机操作，可直接管理从机设备）</option>
+          <option value="slave">从机（把本机设备共享给主控端）</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>本机标识:</label>
+        <span id="relay-peer-id" class="tool-label">计算机名称</span>
+      </div>
+      <div class="setting-row">
+        <label>连接方式:</label>
+        <select id="relay-carrier" class="tool-select"></select>
+        <span id="relay-carrier-note" class="tool-label"></span>
+      </div>
+      <div class="setting-row">
+        <label>共享目录:</label>
+        <input id="relay-root" class="tool-input" type="text" placeholder="\\服务器\relay 或 D:\relay-share">
+        <button id="relay-browse" class="tool-btn">浏览…</button>
+        <button id="relay-clear-cache" class="tool-btn danger">清理闲置缓存</button>
+      </div>
+      <p id="relay-clear-cache-result" class="relay-root-note" role="status" aria-live="polite" hidden></p>
+      <div class="setting-row">
+        <label>部署标识:</label>
+        <select id="relay-pool-id" class="tool-select"></select>
+        <button id="relay-add-deployment" class="tool-btn">新增…</button>
+        <span id="relay-pool-root" class="tool-label"></span>
+      </div>
+      <div id="relay-master-connection">
+      <p class="relay-section-title">2. 选择从机并确认 <span>主控选择目标并确认，从机自动接受连接。</span></p>
+      <div class="setting-row">
+        <label>连接对端:</label>
+        <select id="relay-pairing" class="tool-select"></select>
+        <button id="relay-pair" class="tool-btn primary">确认连接</button>
+        <button id="relay-unpair" class="tool-btn">解除连接</button>
+      </div>
+      <p id="relay-pair-note" class="relay-root-note"></p>
+      </div>
+      <div id="relay-slave-connection" hidden>
+        <p class="relay-section-title">2. 等待主控连接 <span>保存本机配置后保持运行，无需选择或确认对端。</span></p>
+        <p id="relay-slave-status" class="relay-root-note" role="status"></p>
+      </div>
+      <p id="relay-use-title" class="relay-section-title">3. 管理设备 <span>接通后设备自动出现在主控端；从机保持运行即可。</span></p>
+      <p class="relay-root-note">已确认关系下次启动自动恢复；主控可解除连接，从机可关闭中转停止共享。切换部署后自动更新设备与终端。</p>
+      <details class="relay-advanced">
+        <summary>高级设置与诊断</summary>
+      <div class="setting-row">
+        <label>同部署准入:</label>
+        <input id="relay-pairing-required" type="hidden" value="1">
+        <span class="tool-label">由主控确认连接，从机自动接受；已确认的连接下次启动自动重连</span>
+      </div>
+      <div class="setting-row"><span class="tool-label">实例键 <b id="relay-node-id">未生成</b></span></div>
+      <div class="setting-row">
+        <label title="远程上传需加入 push，下载需加入 pull；由从机配置决定">命令白名单:</label>
+        <input id="relay-subcommands" class="tool-input" type="text" placeholder="devices, version, get-state, get-serialno, logcat, shell, push, pull">
+      </div>
+      <div class="setting-row">
+        <label><input id="relay-allow-shell" type="checkbox"> 允许从机执行任意 shell（关闭后只放行上面的白名单子命令）</label>
+      </div>
+      <div class="setting-row">
+        <label>对外共享设备:</label>
+        <input id="relay-managed-serials" class="tool-input" type="text" placeholder="留空表示共享本机全部设备；也可填序列号，用逗号分隔">
+      </div>
+      <div class="setting-row">
+        <span id="relay-config-path" class="tool-label"></span>
+      </div>
+      <pre id="relay-events" class="panel-output" style="font-size:11px; max-height:160px;"></pre>
+      </details>
+    </div>
+  </div>
+
+  <div id="relay-deployment-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="relay-deployment-title">
+    <div class="diagnostic-dialog relay-root-choice-dialog">
+      <div class="diagnostic-header">
+        <h3 id="relay-deployment-title">新增部署标识</h3>
+        <button id="relay-deployment-close" class="diagnostic-close" title="关闭">✕</button>
+      </div>
+      <div class="setting-row">
+        <input id="relay-deployment-name" class="tool-input" type="text" maxlength="41" placeholder="例如 lab-a（字母、数字、点、下划线、短横线）">
+      </div>
+      <p id="relay-deployment-error" class="relay-warning" hidden></p>
+      <p class="relay-root-note">新增后点击「保存并生效」，在当前共享目录中创建部署。</p>
+      <div class="setting-row relay-choice-actions">
+        <button id="relay-deployment-add" class="tool-btn primary">添加</button>
+        <button id="relay-deployment-cancel" class="tool-btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="relay-cache-confirm-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="relay-cache-confirm-title">
+    <div class="diagnostic-dialog relay-root-choice-dialog">
+      <div class="diagnostic-header">
+        <h3 id="relay-cache-confirm-title">清理共享目录闲置缓存</h3>
+        <button id="relay-cache-confirm-close" class="diagnostic-close" title="关闭">✕</button>
+      </div>
+      <p id="relay-cache-confirm-path" class="relay-root-note"></p>
+      <p class="relay-warning">清理全部部署的已结束会话、失联遗留流和过期请求，清除旧回执及归档的大段输出，不可恢复。正在使用的会话、在途数据、近期变化文件和最小去重索引保留。</p>
+      <p class="relay-root-note">中转和终端保持运行，配置/配对、心跳身份、活动追加日志和未知业务文件保留；显示减少空间及保留原因。刚结束文件留30秒，协议和失联文件留10分钟观察窗口。</p>
+      <div class="setting-row relay-choice-actions">
+        <button id="relay-cache-confirm-cancel" class="tool-btn primary">取消</button>
+        <button id="relay-cache-confirm-delete" class="tool-btn danger">确认清理闲置缓存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 换共享目录时，如果目录里已经有上一轮的中转数据，先问清楚要沿用还是清空重建。 -->
+  <div id="relay-root-choice-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="relay-root-choice-title">
+    <div class="diagnostic-dialog relay-root-choice-dialog">
+      <div class="diagnostic-header">
+        <div>
+          <h3 id="relay-root-choice-title">共享目录里已有中转数据</h3>
+          <p id="relay-root-choice-desc"></p>
+        </div>
+        <button id="relay-root-choice-close" class="diagnostic-close" title="关闭">✕</button>
+      </div>
+      <ul id="relay-root-choice-files" class="relay-root-files"></ul>
+      <p class="relay-root-note">「沿用」会继续使用这些数据（适合本来就是这台机器在用的目录）；
+        「清空后重建」只删除上面列出的中转自己的文件，目录里的其他文件不会动。</p>
+      <div class="setting-row relay-choice-actions">
+        <button id="relay-root-keep" class="tool-btn primary">沿用现有数据</button>
+        <button id="relay-root-clean" class="tool-btn danger">清空后重建</button>
+        <button id="relay-root-cancel" class="tool-btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 跨机中转首连确认：新对端首次出现时必须由人确认一次，之后才接受它的请求。 -->
+  <div id="relay-confirm-overlay" class="diagnostic-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="relay-confirm-title">
+    <div class="diagnostic-dialog relay-confirm-dialog">
+      <div class="diagnostic-header">
+        <div>
+          <h3 id="relay-confirm-title">跨机中转：确认连接</h3>
+          <p>主控确认所选从机后自动验证连接，从机无需再确认。</p>
+        </div>
+        <button id="relay-confirm-close" class="diagnostic-close" title="关闭">✕</button>
+      </div>
+      <div id="relay-confirm-body" class="relay-confirm-body"></div>
+      <pre id="relay-confirm-detail" class="panel-output" style="max-height:180px;"></pre>
+      <div class="setting-row">
+        <button id="relay-confirm-accept" class="tool-btn primary">确认连接</button>
+        <button id="relay-confirm-ignore" class="tool-btn">暂不接受</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div id="status-bar">
+    <span id="status-devices">等待设备...</span>
+    <span id="status-relay" class="status-relay" hidden></span>
+    <span id="status-layout">布局: 网格</span>
+  </div>
+
+  <!-- 操作通知 -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="vendor/xterm.js?v=52"></script>
+  <script src="vendor/xterm-addon-fit.js?v=52"></script>
+  <script src="db-flash.js?v=52"></script>
+  <script src="tool-floating-window.js?v=52"></script>
+  <script src="remote-tool-context.js?v=52"></script>
+  <script src="db-remote-files.js?v=52"></script>
+  <script src="db-flash-app.js?v=52"></script>
+  <script src="command-column-editor.js?v=53"></script>
+  <script src="extension-tool-selection.js?v=1"></script>
+  <script src="app.js?v=56"></script>
+  <script src="terminal-window.js?v=53"></script>
+  <script src="tool-extra-windows.js?v=52"></script>
+  <script src="powershell-terminal.js?v=52"></script>
+  <script src="serial-shortcuts.js?v=55"></script>
+  <script src="serial-xmodem.js?v=53"></script>
+  <script src="serial-controls-window.js?v=1"></script>
+  <script src="serial-logging.js?v=1"></script>
+  <script src="serial-terminal.js?v=55"></script>
+  <script src="usb-relay.js?v=52"></script>
+  <script src="mijia.js?v=52"></script>
+</body>
+</html>

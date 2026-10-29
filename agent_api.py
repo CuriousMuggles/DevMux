@@ -67,7 +67,8 @@ def validate(name, args):
     for key, value in args.items():
         spec = schema['properties'][key]
         kind = spec['type']
-        valid = (kind == 'string' and isinstance(value, str) or
+        valid = (kind == 'boolean' and type(value) is bool or
+                 kind == 'string' and isinstance(value, str) or
                  kind == 'integer' and type(value) is int or
                  kind == 'number' and type(value) in (int, float) or
                  kind == 'object' and isinstance(value, dict) or

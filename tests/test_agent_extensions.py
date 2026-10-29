@@ -116,7 +116,7 @@ class ExtensionsTests(unittest.IsolatedAsyncioTestCase):
         names = {item['name'] for item in listed['result']['tools']}
         self.assertTrue({'extensions_list','extension_capabilities','extension_call'} <= names)
         discovered = await agent_client.call('extensions_list',{})
-        self.assertEqual({item['tool'] for item in discovered['data']['tools']},{'relay','db-flash'})
+        self.assertEqual({item['tool'] for item in discovered['data']['tools']},{'relay','db-flash','mijia'})
         caps = await agent_client.call('extension_capabilities',{'target':self.target,'tool':'db-flash'})
         data = self.result(caps)
         self.assertFalse(data['allowed'])
@@ -126,7 +126,7 @@ class ExtensionsTests(unittest.IsolatedAsyncioTestCase):
             'extensions_list'],capture_output=True,text=True,encoding='utf-8',timeout=15,
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertEqual(cli.returncode,0,cli.stderr)
-        self.assertEqual(len(json.loads(cli.stdout)['data']['tools']),2)
+        self.assertEqual(len(json.loads(cli.stdout)['data']['tools']),3)
         with self.assertRaises(ValueError):
             await self.manager.agent.call('extension_call',{'target':self.target,'tool':'relay',
                 'action':'set','arguments':False})

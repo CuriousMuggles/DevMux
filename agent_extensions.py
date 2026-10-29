@@ -70,6 +70,13 @@ DESCRIPTIONS = {
             {'jobId': STRING, 'requestId': STRING})}}
 
 
+DESCRIPTIONS['mijia'] = {
+    'status': action('查询本机米家登录状态；请在界面登录'),
+    'snapshot': action('列出本机可操作的在线开关；操作前先查询', {'refreshCatalog': {'type': 'boolean'}}),
+    'read-switch': action('读取设备开关状态', {'did': STRING}, ['did']),
+    'set-switch': action('设置设备开关并读取结果', {'did': STRING, 'value': {'type': 'boolean'}}, ['did', 'value'])}
+
+
 DESCRIPTIONS['serial'].update({
     'xmodem-start': action('准备独占传输，未知结果使用同一requestId查询；8位且禁XON/XOFF，至多64MiB',
         {'sessionId': STRING, 'generation': STRING, 'requestId': STRING,
@@ -105,13 +112,29 @@ def describe(tool, actions):
 async def invoke(api, name, args):
     manager = api.manager
     if name == 'extensions_list':
-        return {'tools': [{'tool': key, 'name': service.NAME,
+        return {'tools': [{'tool': 'mijia', 'name': '米家', 'actions': DESCRIPTIONS['mijia']}] + [{'tool': key, 'name': service.NAME,
             'actions': describe(key, sorted(service.ACTIONS))}
             for key, service in sorted(manager.extension_tools.services.items())]}
     target = api.resolve(args['target'], 'computer')
     tool = args['tool']
     operation = 'capabilities' if name == 'extension_capabilities' else args['action']
     arguments = args.get('arguments', {})
+    if tool == 'mijia':
+        if not target['local']:
+            raise PermissionError('米家仅支持本机调用')
+        if operation == 'capabilities':
+            return {'success': True, 'data': {'actions': list(DESCRIPTIONS['mijia']),
+                'agentActions': DESCRIPTIONS['mijia'], 'restrictions': ['仅支持本机调用']},
+                'target': args['target'], 'tool': tool, 'action': operation}
+        schema = DESCRIPTIONS['mijia'].get(operation, {}).get('inputSchema')
+        if not schema or not isinstance(arguments, dict) or set(arguments) - set(schema['properties']) or set(schema['required']) - set(arguments):
+            raise ValueError('米家动作或参数无效')
+        for key, value in arguments.items():
+            kind = schema['properties'][key]['type']
+            if (kind == 'boolean' and type(value) is not bool) or (kind == 'string' and not isinstance(value, str)):
+                raise ValueError(f'参数 {key} 类型无效')
+        data = await manager._run_blocking(manager.mijia.call, api, operation, arguments)
+        return {'success': True, 'data': data, 'target': args['target'], 'tool': tool, 'action': operation}
     # 薄客户端先生成标识；直接使用认证 WS 的调用者也必须事先知道原请求标识。
     if (tool == 'db-flash' and operation == 'start') or (tool == 'serial' and operation == 'open'):
         identifier = arguments.get('requestId')

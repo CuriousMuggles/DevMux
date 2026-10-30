@@ -21,6 +21,16 @@ MAX_SEGMENTS = 32
 _NAME = re.compile(r'^([0-9a-f]{32})-([0-9]{8})\.jsonl$')
 
 
+def _journal_io(operation, path, call):
+    # Windows 原生读取的异常不一定带文件名；保留失败步骤以区分权限、网络和确认写入。
+    try:
+        return call()
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise OSError(f'{operation} {path}: {exc}') from exc
+
+
 def _encode(body):
     raw = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     if len(raw) > MAX_RECORD_BYTES:
@@ -192,7 +202,8 @@ class Runtime:
         paths = set(directory.glob('*.jsonl'))
         # 固定头通过无缓存读取，避免SMB目录缓存阻止发现刚创建的新段。
         try:
-            head = json.loads(relay_file_io.read_bytes(str(directory / 'head.json')))
+            head_path = directory / 'head.json'
+            head = json.loads(_journal_io('读取发现头', head_path, lambda: relay_file_io.read_bytes(str(head_path))))
             if not isinstance(head, dict):
                 raise ValueError('控制日志发现头格式非法')
             epoch, number = head.get('writer'), head.get('segment')
@@ -232,10 +243,10 @@ class Runtime:
                 row = self.db.execute('SELECT offset FROM cursors WHERE path=?', (str(path),)).fetchone()
                 offset = row[0] if row else 0
                 try:
-                    size = relay_file_io.stat(str(path)).st_size
+                    size = _journal_io('检查日志段', path, lambda: relay_file_io.stat(str(path))).st_size
                     if size < offset:
                         raise ValueError('控制日志被截断，已停止消费')
-                    data = relay_file_io.read_bytes(str(path), offset, MAX_RECORD_BYTES * 2 + 1024)
+                    data = _journal_io('读取日志段', path, lambda: relay_file_io.read_bytes(str(path), offset, MAX_RECORD_BYTES * 2 + 1024))
                 except FileNotFoundError:
                     if path in required and not row and int(match[2]) < maxima[match[1]]:
                         raise OSError('控制日志中间段暂不可见，等待恢复，不跳段消费')
@@ -259,8 +270,8 @@ class Runtime:
                 ack_path = str(directory / (match[1] + '.ack'))
                 position = (int(match[2]), end)
                 if end and position > self.acknowledged.get(ack_path, (-1, -1)):
-                    relay.atomic_write_json(str(directory / (match[1] + '.ack')),
-                                            {'segment': int(match[2]), 'offset': end})
+                    _journal_io('写入消费确认', ack_path, lambda: relay.atomic_write_json(
+                        ack_path, {'segment': int(match[2]), 'offset': end}))
                     self.acknowledged[ack_path] = position
 
     def receive_requests(self, queue):

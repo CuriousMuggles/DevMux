@@ -55,6 +55,7 @@ TESTS = [
     ('Paste Pacing',    'tests.test_paste_pacing'),
     ('Relay Transport', 'tests.test_relay_transport'),
     ('Relay Message Journal', 'tests.test_relay_journal'),
+    ('Relay Journal Toast', 'tests.test_relay_journal_toast'),
     ('Legacy Archive Read Compatibility', 'tests.test_relay_archive'),
     ('Relay Carrier',   'tests.test_relay_carrier'),
     ('Relay Liveness',  'tests.test_relay_liveness'),

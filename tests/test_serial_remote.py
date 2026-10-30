@@ -367,6 +367,26 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         self.registry.call('serial','close',{'sessionId':local['sessionId']},caller='gui')
         self.assertTrue(self.slave_ports[0][2].closed)
 
+    async def test_stream_disconnect_after_send_marks_uncertain(self):
+        self.registry.call('serial','permission',{'allowed':True})
+        opened=await self.gui('open',{'port':'COM3','requestId':uuid.uuid4().hex})
+        client=self.harness.master._serial_clients[(self.harness.slave.config.nodeId,opened['sessionId'],'gui')]
+        original=client.check
+        calls=0
+        def interrupted():
+            nonlocal calls
+            calls+=1
+            if calls>1: raise PermissionError('心跳中断')
+            return original()
+        with patch.object(client,'check',side_effect=interrupted):
+            with self.assertRaises(Exception) as error:
+                await self.gui('write',dict(sessionId=opened['sessionId'],generation=opened['generation'],data='ONCE'))
+        self.assertTrue(getattr(error.exception,'operation_uncertain',False))
+        self.assertTrue(client.uncertain)
+        with self.assertRaises(Exception):
+            await self.gui('write',dict(sessionId=opened['sessionId'],generation=opened['generation'],data='AGAIN'))
+        self.assertNotIn(b'AGAIN',self.slave_ports[0][2].writes)
+
     async def test_stream_replay_rejected_and_output_cursor_gap(self):
         self.registry.call('serial','permission',{'allowed':True})
         opened=await self.gui('open',{'port':'COM3','requestId':uuid.uuid4().hex})

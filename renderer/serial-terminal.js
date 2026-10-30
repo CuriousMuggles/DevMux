@@ -113,7 +113,7 @@
     const echo = panel.querySelector('.serial-echo');
     const pacingSupported = target.local || opened.serialWritePacingProtocol === 1;
     charDelay.disabled = !pacingSupported;
-    let alive = true, failed = false, connectionLost = false, reading = false, cursor = 0, generation = opened.generation, pollTimer;
+    let alive = true, failed = false, reconnecting = false, connectionLost = false, reading = false, cursor = 0, generation = opened.generation, pollTimer;
     let decoder = new TextDecoder('utf-8'), chain = Promise.resolve(), queueBytes = 0;
     let lastState = opened;
     let pendingReceipt = false, inputEpoch = 0, transferBusy = false, transferUI = null, configBusy = false;
@@ -198,7 +198,7 @@
       controlToggle.classList.toggle('serial-control-available', !ownsInput);
     }
     function applyInputState() {
-      const blocked = failed || pendingReceipt || transferBusy || configBusy;
+      const blocked = failed || reconnecting || pendingReceipt || transferBusy || configBusy;
       term.options.disableStdin = blocked; command.disabled = blocked;
       for (const button of panel.querySelectorAll('.serial-send,.serial-shortcuts')) button.disabled = blocked;
       controlToggle.disabled = blocked;
@@ -209,6 +209,12 @@
       const hint = !capable ? '从机不支持在线修改参数，请升级从机' : lastState.shared ? 'COM仍有其他接入，关闭其他接入后可应用' : !lastState.writable ? '请先接管输入权再应用串口参数' : '参数将在当前COM连接上应用，不会自动重开';
       if (configHint.textContent !== hint) configHint.textContent = hint;
 
+    }
+    function waitForHeartbeat() {
+      if (!reconnecting) { inputEpoch++; queueBytes = 0; }
+      reconnecting = true; applyInputState();
+      status.textContent = '目标暂时离线，等待心跳恢复；原接入有效时自动恢复，不重发输入';
+      pollTimer = setTimeout(poll, 1000);
     }
     function fail(message) {
       failed = true; clearTimeout(pollTimer); status.textContent = message;
@@ -227,7 +233,7 @@
       // 输入与控制按序执行；旧端读取仍串行，新端按控制版本拒绝过期状态。
       const epoch = inputEpoch;
       chain = chain.then(async () => {
-        if (alive && !failed && (!isInput || (!pendingReceipt && epoch === inputEpoch))) await operation();
+        if (alive && !failed && (!isInput || (!reconnecting && !pendingReceipt && epoch === inputEpoch))) await operation();
       }).catch(error => {
         if (alive) fail(error.message || '连接失败');
       });
@@ -239,8 +245,13 @@
       const readOutput = async () => {
         const result = await request('read', {cursor, limit: 32768});
         if (!alive || failed) return;
-        if (!result.success) { fail(result.output || '读取失败，请关闭后重新连接'); return; }
+        if (!result.success) {
+          if (!target.local && /^(目标已离线|串口电脑已离线或解除连接|目标连接尚未验证)/.test(result.output || '')) waitForHeartbeat();
+          else fail(result.output || '读取失败，请关闭后重新连接');
+          return;
+        }
         const output = result.data;
+        if (reconnecting && output.state === 'running' && !output.closed) { reconnecting = false; statusSignature = ''; applyInputState(); }
         if (output.droppedBytes) {
           decoder = new TextDecoder(encoding.value);
           term.writeln(`\r\n[历史已裁剪 ${output.droppedBytes} 字节]`);
@@ -262,7 +273,7 @@
     }
     const lineEnding = () => ({cr: '\r', lf: '\n', crlf: '\r\n', none: ''})[newline.value];
     function input(data, mode, selectedEncoding = encoding.value) {
-      if (!alive || failed || pendingReceipt || transferBusy || configBusy || !data) return;
+      if (!alive || failed || reconnecting || pendingReceipt || transferBusy || configBusy || !data) return;
       activeUntil = Date.now() + 1000;
       clearTimeout(pollTimer);
       if (!reading) pollTimer = setTimeout(poll, 0);
@@ -290,7 +301,7 @@
     const commandHistory = [];
     let historyIndex = -1;
     function sendCommand(value = command.value) {
-      if (!alive || failed || pendingReceipt || transferBusy || configBusy || !value) return;
+      if (!alive || failed || reconnecting || pendingReceipt || transferBusy || configBusy || !value) return;
       let accepted;
       if (format.value === 'hex') {
         const hexValue = value.replace(/\s/g, '');

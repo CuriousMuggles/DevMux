@@ -64,6 +64,24 @@ class JournalTests(unittest.TestCase):
         self.assertFalse(incoming.pending_requests())
         print(f'  [INFO] 1000次并发请求/回执，共享文件{len(files)}个')
 
+    def test_io_error_reports_operation_and_recovers_without_losing_request(self):
+        outgoing, incoming = self.queues()
+        request = self.request()
+        outgoing.submit(request)
+        original = journal.relay_file_io.read_bytes
+        def broken(path, *args):
+            if path.endswith('head.json'):
+                raise PermissionError(13, 'access denied')
+            return original(path, *args)
+        with patch.object(journal.relay_file_io, 'read_bytes', side_effect=broken):
+            self.assertFalse(incoming.pending_requests())
+            notice = next(iter(incoming.runtime.notices.values()))
+            self.assertIn('读取发现头', notice)
+            self.assertIn('head.json', notice)
+            self.assertIn('access denied', notice)
+        self.assertEqual(incoming.pending_requests()[0][1].reqId, request.reqId)
+        self.assertFalse(incoming.runtime.notices)
+
     def test_partial_record_checksum_and_restart_cursor(self):
         outgoing, incoming = self.queues()
         request = self.request()

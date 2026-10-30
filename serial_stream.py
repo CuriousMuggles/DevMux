@@ -203,12 +203,18 @@ class MasterSerialStream:
             self.sequence+=1;sequence=self.sequence
             self._append({'seq':sequence,'action':action,'args':arguments})
             deadline=time.monotonic()+ACK_WAIT_SECONDS
-            while time.monotonic()<deadline:
-                self.check();self.update_meta()
-                if self.meta.get('ackSeq')==sequence:
-                    if not self.meta.get('ackSuccess'):raise RemoteToolError(self.meta.get('ackError') or '串口输入被拒绝')
-                    return dict(self.meta,writtenBytes=self.meta.get('ackBytes',0))
-                if self.meta.get('closed'):break
-                time.sleep(.01)
+            try:
+                while time.monotonic()<deadline:
+                    self.check();self.update_meta()
+                    if self.meta.get('ackSeq')==sequence:
+                        if not self.meta.get('ackSuccess'):raise RemoteToolError(self.meta.get('ackError') or '串口输入被拒绝')
+                        return dict(self.meta,writtenBytes=self.meta.get('ackBytes',0))
+                    if self.meta.get('closed'):break
+                    time.sleep(.01)
+            except RemoteToolError:
+                raise
+            except Exception as exc:
+                self.uncertain=True
+                raise RemoteToolError('串口输入回执未确认，禁止自动重发',uncertain=True) from exc
             self.uncertain=True
             raise RemoteToolError('串口输入回执未确认，禁止自动重发',uncertain=True)

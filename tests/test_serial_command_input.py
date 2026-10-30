@@ -16,7 +16,7 @@ function session() {
   const command = {value:'',selectionStart:0,selectionEnd:0,dispatchEvent(){},
     setRangeText(text,start,end){this.value=this.value.slice(0,start)+text+this.value.slice(end);this.selectionStart=this.selectionEnd=start+text.length;}};
   const writes = [], format={value:'text'}, newline={value:'cr'}, status={};
-  const context={command,writes,format,newline,status,alive:true,failed:false,pendingReceipt:false,transferBusy:false,configBusy:false,accept:true,Event:class {},
+  const context={command,writes,format,newline,status,alive:true,failed:false,reconnecting:false,pendingReceipt:false,transferBusy:false,configBusy:false,accept:true,Event:class {},
     input(data,mode){if(!context.accept)return;writes.push({data,mode});return true;},
     lineEnding:()=>({cr:'\r',lf:'\n',crlf:'\r\n',none:''})[newline.value]};
   vm.createContext(context);vm.runInContext(commands+keys+';globalThis.send=sendCommand;',context);
@@ -62,6 +62,23 @@ SCRIPT = r"""
  await wait(()=>writes.length===2);assert(writes[1].data==='one\r\ntwo\r\n','CRLF末尾不得重复');
  const format=p.querySelector('.serial-format');format.value='hex';format.dispatchEvent(new Event('change'));
  c.value='00 FF\n41';key('Enter');await wait(()=>writes.length===3);assert(writes[2].format==='hex'&&writes[2].data==='00 FF\n41','HEX原始字节语义');
+ // 模拟远端心跳暂失；同一会话恢复时保留终端内容且不重发输入。
+ w.target.local=false;
+ let offline=true, reads=0;
+ const prior=callWS;
+ callWS=async(type,args,...rest)=>{
+   if(type==='extension-tool'&&args.action==='read'&&offline){reads++;return {success:false,output:'目标已离线'};}
+   return prior(type,args,...rest);
+ };
+ w.term.write('RECOVERY_MARKER');
+ await wait(()=>reads>0&&c.disabled);
+ c.value='UNSENT';key('Enter');assert(writes.length===3,'离线期间不得发送输入');
+ offline=false;
+ await wait(()=>!c.disabled&&p.querySelector('.serial-status').textContent.includes('已连接'));
+ assert([...SerialIntegration.windows.values()][0]===w,'恢复必须保留原窗口');
+ assert(Array.from({length:w.term.buffer.active.length},(_,i)=>w.term.buffer.active.getLine(i)?.translateToString(true)).join('').includes('RECOVERY_MARKER'),'恢复必须保留输出');
+ assert(writes.length===3,'恢复不得重发输入');
+ w.target.local=true;
  await w.close();callWS=original;return true;
 })()
 """

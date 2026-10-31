@@ -21,6 +21,11 @@ import re
 import shlex
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] == '--plugin-host':
+    from plugin_host import run
+    run(sys.argv[2])
+    raise SystemExit(0)
+
 # 下载辅助入口在主后端及窗口初始化之前执行，隔离 USB 原生调用。
 if len(sys.argv) > 1 and sys.argv[1] == '--db-download-host':
     from db_download_host import run_host as run_download_host
@@ -56,14 +61,11 @@ from websockets import ServerConnection as WebSocketServerProtocol
 import adb_worker
 from adb_worker import ADBWorker, ADB_PATH, get_all_devices, log, make_key
 from diagnostics import ADBDiagnosticRunner
-from db_flash import DBFlashService, RealExecutor
-from db_flash_extension import DBFlashExtension
 from relay_app import RelayController, default_session_id
 import relay_app
 from shared_terminal import SharedTerminalBackend
 from agent_api import AgentAPI
 from windows_executor import WindowsService
-from usb_relay import USBRelayService
 from agent_client import runtime_directory
 import secrets
 from pathlib import Path
@@ -180,7 +182,6 @@ LOCAL_DEVICES_ENABLED = not _env_flag('DEVMUX_NO_LOCAL_DEVICES',
 
 # Set at startup so the frontend can read the actual WebSocket port
 _WS_PORT = WS_PORT
-_MIJIA_PAGE_TOKEN = secrets.token_urlsafe(32)
 
 # ---------------------------------------------------------------------------
 # HTTP static file server (runs in a background thread)
@@ -199,16 +200,15 @@ class CustomHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         import random
         cb = str(random.randint(100000, 999999))
-        if self.path.startswith('/?_t=') or self.path == '/' or self.path == '/index.html' or self.path.split('?',1)[0] in ('/desktop-terminal.html', '/desktop-mijia.html'):
+        if self.path.startswith('/?_t=') or self.path == '/' or self.path == '/index.html' or self.path.split('?',1)[0] in ('/desktop-terminal.html', '/desktop-plugin.html'):
             # Serve index.html with actual WebSocket port injected
             page = self.path.split('?', 1)[0].lstrip('/')
-            idx_path = os.path.join(RENDERER_DIR, page if page in ('desktop-terminal.html', 'desktop-mijia.html') else 'index.html')
+            idx_path = os.path.join(RENDERER_DIR, page if page in ('desktop-terminal.html', 'desktop-plugin.html') else 'index.html')
             if os.path.exists(idx_path):
                 with open(idx_path, 'r', encoding='utf-8') as f:
                     html = f.read()
                 html = html.replace('__WS_PORT__', str(_WS_PORT))
                 html = html.replace('__APP_VERSION__', APP_VERSION)
-                html = html.replace('__MIJIA_PAGE_TOKEN__', _MIJIA_PAGE_TOKEN)
                 html = html.replace('v=52', f'v={cb}')
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -576,8 +576,6 @@ class _FileDialog:
 class ManagerServer:
     def __init__(self):
         self.clients: Set[WebSocketServerProtocol] = set()
-        from mijia_service import MijiaService
-        self.mijia = MijiaService()
         from desktop_terminals import DesktopTerminals
         self.desktop_terminals = DesktopTerminals(self,lambda:_HTTP_PORT)
         self.loop: Optional[asyncio.AbstractEventLoop] = None
@@ -638,24 +636,20 @@ class ManagerServer:
         import hashlib
         storage_id = hashlib.sha256(os.path.abspath(self.relay.config_path).encode('utf-8')).hexdigest()[:16]
         self.windows = WindowsService(Path(self.relay.config_path).parent / ('windows-jobs-'+storage_id))
-        self.usb_relay = USBRelayService(Path(self.relay.config_path).with_name(
-            Path(self.relay.config_path).stem + '-usb-relay.json'), log=log,
-            config_storage=self._tool_config_storage('usb-relay'))
         from extension_tools import ExtensionTools
-        self.db_tool = DBFlashExtension(lambda: self.db_flash, Path(self.relay.config_path).with_name(
-            Path(self.relay.config_path).stem + '-db-flash.json'),
-            config_storage=self._tool_config_storage('db-flash'))
         from serial_terminal import SerialService
         self.serial = SerialService(Path(self.relay.config_path).with_name(
             Path(self.relay.config_path).stem + '-serial.json'),
             config_storage=self._tool_config_storage('serial'))
-        self.extension_tools = ExtensionTools({'relay': self.usb_relay, 'db-flash': self.db_tool,
-                                               'serial': self.serial})
+        self.extension_tools = ExtensionTools({'serial': self.serial})
         self.relay.extension_tools = self.extension_tools
         self.relay.windows_service = self.windows
+        from plugin_manager import PluginManager
+        self.plugins = PluginManager(Path(self.relay.config_path).parent / ('plugins-' + storage_id), self.extension_tools)
+        self.extension_tools.plugin_manager = self.plugins
+        atexit.register(self.plugins.close)
         self.agent = AgentAPI(self)
         # 固化工具真实执行；原 DB 包保持只读，测试宿主显式注入假执行器。
-        self.db_flash = DBFlashService(RealExecutor(), progress=self._broadcast_async)
         # 待确认对端的最近一次首连确认负载。中转在界面连上来之前就可能已经发现
         # 对端，那次推送没有人听；新客户端接入时按这里补推一次，否则用户只能靠
         # 状态里兜底提示，看不到「同意/拒绝」的说明与指纹。
@@ -1215,9 +1209,6 @@ class ManagerServer:
                 except Exception as exc:
                     log('SERIAL', f'界面结束时关闭串口接入失败：{type(exc).__name__}: {exc}')
             await self._run_blocking(self.serial_recordings.close_owner, ws)
-            mijia = getattr(self, 'mijia', None)
-            if mijia is not None:
-                mijia.cancel(ws)
             await self._run_blocking(self.desktop_terminals.close_all,ws)
             log('WS', f'client disconnected {ws.remote_address}')
 
@@ -1259,42 +1250,7 @@ class ManagerServer:
             if msg.get('id') is not None:
                 await self._send(ws,dict(type='exec-result',id=msg['id'],**result))
             return
-        if typ == 'mijia':
-            from urllib.parse import urlsplit
-            try:
-                parsed = urlsplit(getattr(getattr(ws, 'request', None), 'headers', {}).get('Origin', ''))
-                allowed = parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost') and parsed.port == _HTTP_PORT
-                token = msg.get('pageToken')
-                allowed = allowed and isinstance(token, str) and secrets.compare_digest(token, _MIJIA_PAGE_TOKEN)
-                if not allowed: raise PermissionError('米家功能仅允许本机应用页面')
-                args = msg.get('arguments', {})
-                if not isinstance(args, dict): raise ValueError('请求参数无效')
-                data = await self._run_blocking(self.mijia.call, ws, msg.get('action'), args)
-                result = dict(success=True, data=data)
-            except Exception:
-                # 云端异常可能包含凭据或登录 URL，不向页面和日志输出。
-                result = dict(success=False, output='米家操作失败，请检查登录、网络和设备状态')
-            await self._send(ws, dict(type='exec-result', id=msg.get('id'), **result))
-            return
-        if typ == 'db-flash':
-            # 本机烧写接口不接入扩展工具的跨机选路，也不允许远端目标参数。
-            from urllib.parse import urlsplit
-            origin = getattr(getattr(ws, 'request', None), 'headers', {}).get('Origin', '')
-            try:
-                parsed = urlsplit(origin)
-                local_origin = parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost') and parsed.port == _HTTP_PORT
-            except ValueError:
-                local_origin = False
-            if not local_origin:
-                result = {'success': False, 'output': '固化烧写仅允许本机应用页面'}
-            elif msg.get('target', 'computer:local') != 'computer:local':
-                result = {'success': False, 'output': '当前固化烧写仅支持本机'}
-            else:
-                result = await self._run_blocking(
-                    self.db_tool.call, msg.get('action', ''), msg.get('arguments', {}))
-            await self._send(ws, {'type': 'exec-result', 'id': msg.get('id'), **result})
-            return
-        if typ in ('computer-tool', 'extension-tool', 'usb-relay', 'relay-clear-cache', 'serial-xmodem-save', 'get-serial-commands', 'save-serial-commands', 'serial-recording'):
+        if typ in ('plugin-manager', 'computer-tool', 'extension-tool', 'usb-relay', 'relay-clear-cache', 'serial-xmodem-save', 'get-serial-commands', 'save-serial-commands', 'serial-recording'):
             # 电脑及扩展工具仅接受本机页面，防止外部网站触发硬件动作。
             origin = getattr(getattr(ws, 'request', None), 'headers', {}).get('Origin', '')
             from urllib.parse import urlsplit
@@ -1306,6 +1262,18 @@ class ManagerServer:
             if not local_page:
                 await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=False, output='电脑操作仅允许本机应用页面'))
                 return
+        if typ == 'plugin-manager':
+            try:
+                target={'local':True} if msg.get('target','computer:local')=='computer:local' else self.agent.resolve(msg.get('target'),'computer')
+                if target['local']:
+                    result=await self._run_blocking(self.plugins.dispatch,msg.get('action'),msg.get('arguments',{}))
+                else:
+                    from remote_plugins import invoke
+                    result=await self._run_blocking(invoke,self.relay,target['nodeId'],msg.get('action'),msg.get('arguments',{}))
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=True, data=result))
+            except Exception as exc:
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=False, output=str(exc)))
+            return
         if typ == 'serial-recording':
             try:
                 target = self.agent.resolve(msg.get('target'), 'computer')
@@ -1334,13 +1302,23 @@ class ManagerServer:
                 result = dict(success=False, output=str(exc))
             await self._send(ws, dict(type='exec-result', id=msg.get('id'), **result))
             return
-        if typ in ('computer-tool', 'extension-tool'):
+        if typ in ('plugin-manager', 'computer-tool', 'extension-tool'):
             try:
                 if typ == 'extension-tool':
                     tool, action = msg.get('tool'), msg.get('action')
                     if action == 'targets':
                         targets = [item for item in self.agent.targets() if item['kind'] == 'computer'
                                    and (item['local'] or item['role'] == 'slave')]
+                        if tool != 'serial':
+                            async def available(item):
+                                if item['local']:return item
+                                try:
+                                    from extension_tools import remote_call
+                                    response=await self._run_blocking(remote_call,self.relay,item['nodeId'],'__plugin_catalog__','list',{})
+                                    plugin=next((p for p in response.get('data',{}).get('plugins',[]) if p['tool']==tool and p.get('remoteCapable',True)),None)
+                                    return {**item,'pluginEnabled':plugin['enabled'],'pluginAllowed':plugin['remoteAllowed']} if plugin else None
+                                except Exception:return None
+                            targets=[item for item in await asyncio.gather(*(available(item) for item in targets)) if item]
                         result = dict(success=True, data={'targets': targets})
                     else:
                         target = self.agent.resolve(msg.get('target'), 'computer')
@@ -1513,14 +1491,6 @@ class ManagerServer:
                 'type': 'diagnostic-cancelled', 'diagnosticId': msg.get('id'), 'success': cancelled,
                 'output': '正在取消诊断…' if cancelled else '没有匹配的运行中诊断',
             })
-
-        elif typ == 'usb-relay':
-            arguments = msg.get('arguments') or {}
-            if not isinstance(arguments, dict):
-                result = {'success': False, 'output': '继电器参数无效'}
-            else:
-                result = await self._run_blocking(self.usb_relay.call, msg.get('action', ''), arguments)
-            await self._send(ws, {'type': 'exec-result', 'id': msg.get('id'), **result})
 
         elif typ == 'get-log':
             result = await self._get_log()
@@ -2626,7 +2596,7 @@ class ManagerServer:
 
             # Tear down current backend
             # 先停止烧写工具并回收线程，再关闭 WS，保留最终状态推送。
-            await self._run_blocking(self.db_flash.close)
+            await self._run_blocking(self.plugins.close)
             if self._agent_runtime:
                 self._agent_runtime.unlink(missing_ok=True)
             self.agent.close()
@@ -2655,11 +2625,7 @@ class ManagerServer:
                 # 退出；重启使用新实例，绝不重新激活旧线程。
                 log('MAIN', '旧 ADB Worker 尚未退出，创建新实例继续重启')
                 self.worker = self._new_worker()
-            self.db_flash = DBFlashService(RealExecutor(), progress=self._broadcast_async)
-            self.db_tool = DBFlashExtension(lambda: self.db_flash, self.db_tool.config_path,
-                config_storage=self._tool_config_storage('db-flash'))
-            self.extension_tools.services['db-flash'] = self.db_tool
-            from serial_terminal import SerialService
+                from serial_terminal import SerialService
             self.serial = SerialService(self.serial.config_path,
                 config_storage=self._tool_config_storage('serial'))
             self.extension_tools.services['serial'] = self.serial

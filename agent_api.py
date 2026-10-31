@@ -48,10 +48,10 @@ TOOLS = [
     tool('session_resize', '调整终端尺寸', {**SESSION, 'cols': {'type': 'integer', 'minimum': 1, 'maximum': 1000},
          'rows': {'type': 'integer', 'minimum': 1, 'maximum': 1000}}, ['sessionId', 'cols', 'rows']),
     tool('session_close', '关闭电脑会话或释放设备输入权，不终止已有设备 shell', SESSION, ['sessionId']),
-    tool('extensions_list', '发现当前版本已注册的扩展及动作；远端可用性用 extension_capabilities 查询'),
+    tool('extensions_list', '发现本机已启用扩展；可指定target查询从机已安装的远程插件及其启用/授权状态', TARGET),
     tool('extension_capabilities', '查询指定电脑的扩展能力、参数说明和独立权限',
          {**TARGET, 'tool': STRING}, ['target', 'tool']),
-    tool('extension_call', '调用继电器、DB烧写等固定扩展动作。DB start 自动生成 requestId；超时查询原请求，禁止盲目重试。远程 permission 禁止。',
+    tool('extension_call', '调用已启用插件或核心扩展动作；先查询extensions_list和extension_capabilities。DB start 自动生成 requestId；超时查询原请求，禁止盲目重试。远程 permission 禁止。',
          {**TARGET, 'tool': STRING, 'action': STRING,
           'arguments': {'type': 'object', 'additionalProperties': True}}, ['target', 'tool', 'action']),
 ]

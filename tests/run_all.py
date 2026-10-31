@@ -2,8 +2,8 @@
 """
 DevMux - 自动化验证入口
 =============================
-每次代码更改后运行： python tests/run_all.py
-验证所有核心功能正常。
+主线合入或正式发布前的完整验证入口：python tests/run_all.py
+开发分支先构建新包，再按改动范围选择相关测试组。
 """
 import sys
 import time
@@ -21,10 +21,15 @@ sys.path.insert(0, str(ROOT))
 
 # Test modules: (name, module_path)
 TESTS = [
+    ('Plugin Development SDK', 'tests.test_plugin_dev'),
+    ('Plugin SDK Browser', 'tests.test_plugin_sdk_ui'),
+    ('Plugin Store', 'tests.test_plugin_store'),
+    ('Plugin Runtime', 'tests.test_plugin_runtime'),
+    ('Remote Plugins', 'tests.test_remote_plugins'),
+    ('Plugin UI', 'tests.test_plugin_ui'),
+    ('Plugin Tool Frontends', 'tests.test_plugin_frontends'),
+    ('Frozen Plugin Host', 'tests.test_plugin_frozen'),
     ('Mijia Security', 'tests.test_mijia_service'),
-    ('Mijia UI', 'tests.test_mijia_ui'),
-    ('Mijia Detached', 'tests.test_mijia_detached'),
-    ('Mijia Native Window', 'tests.test_mijia_native'),
     ('Extension Tool Selection', 'tests.test_extension_tool_selection'),
     ('Syntax Check',    'tests.test_syntax'),
     ('Module Imports',  'tests.test_imports'),
@@ -45,7 +50,6 @@ TESTS = [
     ('DB Flash Real Process', 'tests.test_db_flash_real'),
     ('DB Flash Remote', 'tests.test_db_flash_remote'),
     ('DB Flash WS', 'tests.test_db_flash_server'),
-    ('DB Flash Main UI', 'tests.test_db_flash_app_ui'),
     ('USB Relay Local', 'tests.test_usb_relay'),
     ('Extension Tools Relay', 'tests.test_extension_tools'),
     ('HTTP Port Exclusivity', 'tests.test_http_port_conflict'),
@@ -93,6 +97,7 @@ TESTS = [
     ('Serial Detached Shortcuts', 'tests.test_serial_shortcuts_detached'),
     ('Desktop Terminal Ownership', 'tests.test_desktop_terminals'),
     ('Native Terminal Window', 'tests.test_native_terminal_host'),
+    ('Native Plugin Windows', 'tests.test_native_plugin_host'),
     ('Relay File Transfer', 'tests.test_relay_transfer'),
     ('Windows Unicode ADB Pull', 'tests.test_adb_pull_unicode'),
     ('Relay File Latency', 'tests.test_relay_file_latency'),

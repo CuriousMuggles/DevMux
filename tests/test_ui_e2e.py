@@ -530,6 +530,7 @@ def _cdp_eval(ws_url, url, expression):
         command('Runtime.enable')
         time.sleep(2)
         response = command('Runtime.evaluate', {
+            'userGesture': True,
             'expression': expression,
             'awaitPromise': True,
             'returnByValue': True,

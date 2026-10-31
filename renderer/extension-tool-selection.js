@@ -2,10 +2,7 @@
 (() => {
   const key = 'extension-tool-menu-v1';
   const tools = [
-    ['mijia', '米家设备', 'tools-mijia'],
-    ['usb-relay', '继电器控制', 'tools-usb-relay'],
     ['relay', '跨机中转配置', 'tools-relay'],
-    ['db-flash', 'DB 固化烧写', 'tools-db-flash'],
   ];
   let preferences = {};
   try {
@@ -18,7 +15,7 @@
     for (const [id, , menuId] of tools) {
       document.getElementById(menuId).style.display = preferences[id] === false ? 'none' : '';
     }
-    const empty = tools.filter(([, , menuId]) => menuId.startsWith('tools-'))
+    const empty = !document.getElementById('tools-plugins') && tools.filter(([, , menuId]) => menuId.startsWith('tools-'))
       .every(([id]) => preferences[id] === false);
     document.getElementById('tools-tab').style.display = empty ? 'none' : '';
     if (empty) document.getElementById('tools-menu').style.display = 'none';

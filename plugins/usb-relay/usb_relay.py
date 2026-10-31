@@ -87,12 +87,12 @@ class USBRelayService:
 
     def _probe(self, action, serial=''):
         self.log('USB', f'开始读取：{action}，设备 {serial or "枚举"}')
-        if getattr(sys, 'frozen', False):
-            helper = Path(sys._MEIPASS) / 'relay' / 'RelayProbe.exe'
-            library_dir = Path(sys._MEIPASS) / 'relay'
-        else:
-            helper = Path(__file__).resolve().parent / 'build' / 'relay-probe' / 'RelayProbe.exe'
-            library_dir = Path(__file__).resolve().parent / 'vendor' / 'usb-relay' / 'bin'
+        library_dir = Path(__file__).resolve().parent / 'native'
+        helper = library_dir / 'RelayProbe.exe'
+        if not helper.is_file() and not getattr(sys, 'frozen', False):
+            workspace = Path(__file__).resolve().parents[2]
+            helper = workspace / 'build' / 'relay-probe' / 'RelayProbe.exe'
+            library_dir = workspace / 'vendor' / 'usb-relay' / 'bin'
         if not helper.is_file():
             raise RuntimeError('缺少继电器辅助程序；源码运行请先执行 python -B relay_probe_build.py')
         argv = [str(helper), action, str(library_dir)]

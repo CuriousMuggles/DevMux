@@ -40,7 +40,7 @@ def run():
 
                 def wait_ready():
                     for _ in range(60):
-                        if evaluate("document.querySelectorAll('#extension-tool-options input').length === 4"):
+                        if evaluate("document.querySelectorAll('#extension-tool-options input').length === 1"):
                             return
                         time.sleep(.1)
                     raise AssertionError('设置复选框未加载')
@@ -49,16 +49,16 @@ def run():
                 assert evaluate("[...document.querySelectorAll('#extension-tool-options input')].every(x=>x.checked)")
                 evaluate("document.querySelector('[data-tab=settings]').click()")
                 assert evaluate("document.getElementById('extension-tool-options').getBoundingClientRect().height > 0")
-                pairs = [('mijia', 'tools-mijia'), ('usb-relay', 'tools-usb-relay'), ('relay', 'tools-relay'), ('db-flash', 'tools-db-flash')]
+                pairs = [('relay', 'tools-relay')]
                 for name, menu in pairs:
                     evaluate(f"document.getElementById('extension-tool-{name}').click()")
                     assert evaluate(f"getComputedStyle(document.getElementById('{menu}')).display === 'none'")
-                assert evaluate("getComputedStyle(document.getElementById('tools-tab')).display === 'none'")
+                assert evaluate("getComputedStyle(document.getElementById('tools-tab')).display !== 'none'")
                 evaluate('location.reload()')
                 time.sleep(.6)
                 wait_ready()
                 assert evaluate("[...document.querySelectorAll('#extension-tool-options input')].every(x=>!x.checked)")
-                evaluate("document.getElementById('extension-tool-db-flash').click()")
+                evaluate("document.getElementById('extension-tool-relay').click()")
                 assert evaluate("getComputedStyle(document.getElementById('tools-tab')).display !== 'none'")
                 evaluate("localStorage.setItem('extension-tool-menu-v1', '{broken'); location.reload()")
                 time.sleep(.6)

@@ -1,0 +1,59 @@
+/* 烧写面板样式限定在独立容器，不影响既有菜单和继电器。 */
+.db-flash-panel { box-sizing: border-box; max-width: 1040px; margin: 24px auto; padding: 24px; color: var(--text); background: var(--bg-dark); border: 1px solid var(--border); border-radius: 14px; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; }
+.db-flash-panel[hidden] { display: none; }
+.db-flash-panel * { box-sizing: border-box; }
+.db-flash-panel h2, .db-flash-panel p { margin: 0 0 12px; }
+.db-flash-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.db-flash-header p, .db-flash-help, .db-flash-panel small { color: var(--text-dim); }
+.db-flash-banner { padding: 10px 14px; border-left: 3px solid var(--warn); background: var(--bg-panel); color: var(--warn); }
+.db-flash-panel button { flex: 0 0 auto; padding: 8px 14px; color: var(--text); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; white-space: nowrap; font: inherit; }
+.db-flash-panel button:hover:not(:disabled) { background: var(--accent-bg); }
+.db-flash-panel button:disabled { opacity: .45; cursor: default; }
+.db-flash-panel button.db-flash-primary { background: var(--accent); border-color: var(--accent); }
+.db-flash-panel input[type=text], .db-flash-panel select { min-width: 0; padding: 9px; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.db-flash-panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.db-flash-path-row, .db-flash-files-bar, .db-flash-actions { display: flex; align-items: center; gap: 10px; margin: 8px 0 16px; flex-wrap: wrap; }
+.db-flash-path-row { margin-bottom: 6px; }
+.db-flash-path-row input { flex: 1 1 280px; }
+.db-flash-platform { margin: 0 0 14px; color: var(--accent); font-size: 13px; }
+.db-flash-platform:empty { display: none; }
+.db-flash-files-bar span { flex: 1 1 220px; min-width: 0; color: var(--text-dim); }
+.db-flash-all { display: block; padding: 10px 0; font-weight: 600; }
+.db-flash-table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.db-flash-table { width: 100%; min-width: 780px; table-layout: fixed; border-collapse: collapse; }
+.db-flash-table caption { text-align: left; padding: 10px 12px; font-weight: 600; background: var(--bg-panel); }
+.db-flash-col-check { width: 54px; }
+.db-flash-col-name { width: 22%; }
+.db-flash-col-description { width: 31%; }
+.db-flash-table th, .db-flash-table td { padding: 12px 10px; text-align: left; vertical-align: middle; overflow-wrap: anywhere; border-top: 1px solid var(--border); }
+.db-flash-table thead th { color: var(--text); background: var(--bg-panel); }
+.db-flash-table tr:nth-child(even) { background: var(--bg-panel); }
+.db-flash-table td:first-child, .db-flash-table th:first-child { text-align: center; }
+.db-flash-item select { width: 100%; }
+.db-flash-item small { display: block; padding-top: 4px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; }
+.db-flash-panel .db-flash-standard { color: var(--accent); overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
+.db-flash-panel .db-flash-description { color: var(--text); font-size: 13px; margin: 0; }
+.db-flash-panel .db-flash-file-path { margin-top: 3px; }
+.db-flash-panel .db-flash-file-path summary { color: var(--text-dim); font-size: 12px; font-weight: 400; }
+.db-flash-options { margin: 18px 0; padding: 14px; border: 1px solid var(--border); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.db-flash-option { min-width: 0; padding: 12px; background: var(--bg-input); border-radius: 6px; }
+.db-flash-option label { display: block; font-weight: 600; }
+.db-flash-option code, .db-flash-option small { display: block; margin: 5px 0; overflow-wrap: anywhere; }
+.db-flash-option code { color: var(--accent); font-size: 12px; }
+.db-flash-option p { color: var(--text-dim); font-size: 12px; margin: 6px 0 0; }
+.db-flash-option select, .db-flash-option input[type=text] { width: 100%; }
+.db-flash-target { grid-column: 1 / -1; }
+.db-flash-panel .error, .db-flash-issues { color: var(--error); overflow-wrap: anywhere; }
+.db-flash-panel progress { width: 100%; height: 12px; accent-color: var(--accent); }
+.db-flash-panel details { margin-top: 16px; }
+.db-flash-panel summary { cursor: pointer; font-weight: 600; }
+.db-flash-steps { max-height: 280px; overflow: auto; padding-left: 28px; }
+.db-flash-steps li { padding: 6px 0; }
+.db-flash-steps code { display: block; color: var(--text-dim); font-size: 12px; overflow-wrap: anywhere; }
+.db-flash-log { min-height: 180px; max-height: 380px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--bg-input); color: var(--text); border-radius: 6px; font: 13px/1.5 Consolas, "Microsoft YaHei", monospace; }
+.db-remote-file-list { max-height: 320px; overflow: auto; border: 1px solid var(--border); }
+.db-remote-file-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; overflow-wrap: anywhere; }
+.db-remote-file-row + .db-remote-file-row { border-top: 1px solid var(--border); }
+.db-remote-file-row button { text-align: left; width: 100%; }
+@media (max-width: 680px) { .db-flash-panel { margin: 8px; padding: 16px; } .db-flash-options { grid-template-columns: minmax(0, 1fr); } }
+

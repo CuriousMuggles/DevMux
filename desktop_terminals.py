@@ -1,6 +1,7 @@
 """原生终端视图代理：后台会话由主页面持有，子窗不能另行开会话。"""
 import asyncio
 import json
+import re
 import secrets
 import threading
 from collections import deque
@@ -77,7 +78,7 @@ class DesktopTerminals:
     async def enqueue(self, record, payload):
         if not record['child']:return
         size=len(json.dumps(payload))
-        initial=payload.get('kind') in ('snapshot', 'mijia-snapshot') and payload.get('initial') is True
+        initial=payload.get('kind') == 'snapshot' and payload.get('initial') is True
         if initial:
             record['queue'].clear();record['queuedBytes']=0;record['resync']=False
         elif record['resync']:return
@@ -100,18 +101,37 @@ class DesktopTerminals:
             key, title = msg.get('key'), msg.get('title')
             if not isinstance(key, str) or not key or len(key)>256 or not isinstance(title,str) or len(title)>512:
                 raise ValueError('终端标识或标题无效')
+            remote_page=None
+            plugin_target=msg.get('target','computer:local')
+            if msg.get('view')=='plugin' and plugin_target!='computer:local':
+                if not key.startswith('plugin:'):raise ValueError('插件窗口标识无效')
+                target=self.manager.agent.resolve(plugin_target,'computer')
+                if target['local']:raise ValueError('远程插件目标无效')
+                from remote_plugins import frontend
+                remote_page=await self.manager._run_blocking(frontend,self.manager.plugins,self.manager.relay,target['nodeId'],key.removeprefix('plugin:'))
             with self.lock:
                 if len(self.records)>=16:raise ValueError('独立终端窗口已达16个上限')
-                if any(r['owner'] is ws and r['key']==key for r in self.records.values()):
+                if any(r['owner'] is ws and r['key']==key and r.get('plugin_target','computer:local')==plugin_target for r in self.records.values()):
                     raise ValueError('该终端已在独立窗口中')
                 identifier=secrets.token_hex(16);token=secrets.token_hex(32)
                 view = msg.get('view', 'terminal')
-                if view not in ('terminal', 'mijia') or (view == 'mijia' and key != 'mijia-panel'):
+                if view not in ('terminal','plugin'):
                     raise ValueError('独立窗口类型无效')
-                page = 'desktop-mijia.html' if view == 'mijia' else 'desktop-terminal.html'
+                plugin_id = None
+                plugin_tool = None
+                if view == 'plugin':
+                    if not key.startswith('plugin:'):
+                        raise ValueError('插件窗口标识无效')
+                    plugin_id=key.removeprefix('plugin:')
+                    installed=remote_page or next((p for p in self.manager.plugins.dispatch('list',{}) if p['id']==plugin_id and p['enabled']),None)
+                    if installed is None:raise ValueError('插件未启用')
+                    plugin_tool=installed.get('tool',plugin_id)
+                page = 'desktop-plugin.html' if view == 'plugin' else 'desktop-terminal.html'
                 url=f'http://127.0.0.1:{self.port}/{page}#{identifier}:{token}'
-                record=dict(id=identifier,key=key,owner=ws,child=None,token=token,bound=False,native=None,maximized=False,
+                record=dict(id=identifier,key=key,plugin_target=msg.get('target','computer:local'),view=view,plugin_id=plugin_id,plugin_tool=plugin_tool,owner=ws,child=None,token=token,bound=False,native=None,maximized=False,
                     queue=deque(),queuedBytes=0,available=asyncio.Event(),sender=None,resync=False)
+                record['remote_page']=remote_page
+                if view=='plugin':record['plugin_permissions']=installed.get('permissions',['pick-file','pick-directory'])
                 self.records[identifier]=record
             try:
                 if self.webview:
@@ -154,6 +174,47 @@ class DesktopTerminals:
         else:raise ValueError('独立窗口动作无效')
         return {}
 
+    async def plugin_request(self, record, child, payload):
+        request=payload.get('request',{})
+        identifier=request.get('id') if isinstance(request,dict) else None
+        async def reply(result):
+            await self.manager._send(child,dict(type='desktop-terminal-view',payload={'kind':'plugin-result','id':identifier,'result':result}))
+        try:
+            if not isinstance(request,dict):raise ValueError('插件请求无效')
+            if request.get('type') == 'devmux-plugin-call':
+                if record.get('remote_page'):
+                    from extension_tools import remote_call
+                    target=self.manager.agent.resolve(record['plugin_target'],'computer')
+                    result=await self.manager._run_blocking(remote_call,self.manager.relay,target['nodeId'],record['plugin_tool'],request.get('action'),request.get('arguments',{}),caller='gui')
+                else:
+                    result=await self.manager._run_blocking(self.manager.plugins.dispatch,'call',{'id':record['plugin_id'],'action':request.get('action'),'arguments':request.get('arguments',{})})
+                await reply(result)
+            elif request.get('type') == 'devmux-host-call':
+                kind=request.get('hostType')
+                arguments=request.get('hostPayload',{})
+                if kind not in ('pick-file','pick-directory','extension-tool'):raise PermissionError('插件不能调用该主程序接口')
+                if kind in ('pick-file','pick-directory') and kind not in record.get('plugin_permissions',['pick-file','pick-directory']):
+                    raise PermissionError('插件清单未声明宿主权限: '+kind)
+                if kind=='extension-tool':
+                    if arguments.get('tool')!=record['plugin_tool']:raise PermissionError('插件不能调用其他工具')
+                    command={key:arguments.get(key) for key in ('tool','action','target','arguments')}
+                    if record.get('remote_page') and command['action']!='targets' and command['target']!=record['plugin_target']:
+                        raise PermissionError('远程插件窗口只能操作原从机')
+                else:
+                    command={'multi':True} if kind=='pick-file' else {'title':'选择目录'}
+                class ReplySocket:
+                    request=child.request
+                    async def send(self, raw):
+                        result=json.loads(raw)
+                        if record.get('remote_page') and kind=='extension-tool' and command['action']=='targets':
+                            data=result.get('data',{})
+                            data['targets']=[item for item in data.get('targets',[]) if item['target']==record['plugin_target']]
+                        await reply(result)
+                await self.manager._handle_message(ReplySocket(),{'type':kind,'id':identifier,**command})
+            else:raise ValueError('插件请求类型无效')
+        except Exception as error:
+            await reply({'success':False,'output':str(error)})
+
     async def child_handler(self, ws):
         record=None
         try:
@@ -167,6 +228,12 @@ class DesktopTerminals:
                     raise PermissionError('子窗能力标识无效或已使用')
                 record['child']=ws
                 record['sender']=asyncio.create_task(self.output_loop(record,ws))
+            if record.get('view') == 'plugin':
+                page={'html':record['remote_page']['html']} if record.get('remote_page') else await self.manager._run_blocking(self.manager.plugins.dispatch,'page',{'id':record['plugin_id']})
+                initial=json.dumps(record.get('plugin_target','computer:local')).replace('<','\\u003c')
+                script='<script>window.DevMuxInitialTarget='+initial+';</script>'
+                page['html']=re.sub(r'<!doctype\s+html\s*>',lambda match:match.group()+script,page['html'],count=1,flags=re.I) if re.search(r'<!doctype\s+html\s*>',page['html'],re.I) else script+page['html']
+                await self.manager._send(ws,dict(type='desktop-terminal-view',payload={'kind':'plugin-page',**page}))
             if record['bound']:await self.notify(record,'desktop-terminal-ready')
             async for raw in ws:
                 msg=json.loads(raw)
@@ -175,7 +242,10 @@ class DesktopTerminals:
                     payload=msg.get('payload')
                     if not isinstance(payload,dict) or len(json.dumps(payload))>262144:
                         raise ValueError('子窗输入消息无效')
-                    await self.notify(record,'desktop-terminal-event',payload=payload)
+                    if record.get('view') == 'plugin':
+                        await self.plugin_request(record,ws,payload)
+                    else:
+                        await self.notify(record,'desktop-terminal-event',payload=payload)
                 elif msg.get('type')=='desktop-terminal-action':
                     action=msg.get('action')
                     if action in ('dock','close'):

@@ -204,18 +204,21 @@ class UnifiedConfigTests(unittest.TestCase):
                 server.ManagerServer, '_new_worker', return_value=EmptyWorker()):
             first = server.ManagerServer()
             try:
-                self.assertTrue(first.serial.remote_allowed and first.usb_relay.remote_allowed and first.db_tool.remote_allowed)
+                self.assertTrue(first.serial.remote_allowed)
+                self.assertFalse(hasattr(first, 'usb_relay'))
+                self.assertFalse(hasattr(first, 'db_tool'))
+                self.assertNotIn('relay', first.extension_tools.services)
+                self.assertNotIn('db-flash', first.extension_tools.services)
                 first.serial.set_remote_permission(False)
-                first.usb_relay.set_remote_permission(False)
-                first.db_tool.set_remote_permission(False)
             finally:
                 first.serial.close()
                 first.windows.close()
                 first._executor.shutdown(wait=True)
             second = server.ManagerServer()
             try:
-                self.assertFalse(second.serial.remote_allowed or second.usb_relay.remote_allowed or second.db_tool.remote_allowed)
-                self.assertEqual(second.db_tool.journal_path, self.root/'relay-db-flash-jobs.json')
+                self.assertFalse(second.serial.remote_allowed)
+                self.assertEqual(second.plugins.store.list(), [])
+                self.assertTrue(json.loads((self.root/'relay-db-flash.json').read_text(encoding='utf-8'))['remoteAllowed'])
                 self.assertEqual(json.loads(serial_path.read_text())['remoteAllowed'], True)
             finally:
                 second.serial.close()

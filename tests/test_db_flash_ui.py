@@ -112,7 +112,7 @@ def run():
                 config_path.write_text('{"enabled": false}', encoding='utf-8')
                 command_line = [sys.executable, '-B', str(ROOT / 'tests/db_flash_app_harness.py')]
             else:
-                command_line = [sys.executable, '-B', str(ROOT / 'db_flash_preview.py'),
+                command_line = [sys.executable, '-B', str(ROOT / 'plugins/db-flash/db_flash_preview.py'),
                                 '--http-port', str(http_port), '--ws-port', str(ws_port)]
             backend = subprocess.Popen(command_line,
                                        cwd=str(ROOT), env=env, stdout=log, stderr=log, stdin=subprocess.PIPE,

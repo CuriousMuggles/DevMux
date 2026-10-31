@@ -6,15 +6,12 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>ADB Manager v__APP_VERSION__</title>
-  <script>const WS_PORT = __WS_PORT__; const APP_VERSION = '__APP_VERSION__'; const MIJIA_PAGE_TOKEN = '__MIJIA_PAGE_TOKEN__';</script>
   <title>DevMux v__APP_VERSION__</title>
   <script>const WS_PORT = __WS_PORT__; const APP_VERSION = '__APP_VERSION__';</script>
   <link rel="stylesheet" href="vendor/xterm.css?v=52">
   <link rel="stylesheet" href="style.css?v=52">
-  <link rel="stylesheet" href="db-flash.css?v=52">
   <link rel="stylesheet" href="tool-floating-window.css?v=55">
-  <link rel="stylesheet" href="mijia.css?v=52">
+  <link rel="stylesheet" href="plugins.css">
 </head>
 <body>
   <!-- 顶部标签栏 -->
@@ -31,10 +28,8 @@
     </div>
     <div class="tab" id="tools-tab" data-tab="tools">工具</div>
     <div id="tools-menu" class="tab-dropdown" style="display:none">
-      <div class="tab-dropdown-item" id="tools-mijia">米家设备…</div>
-      <div class="tab-dropdown-item" id="tools-usb-relay">继电器控制…</div>
+      <div class="tab-dropdown-item" id="tools-plugins">插件管理…</div>
       <div class="tab-dropdown-item" id="tools-relay">跨机中转配置…</div>
-      <div class="tab-dropdown-item" id="tools-db-flash" role="button" tabindex="0">DB 固化烧写…</div>
     </div>
     <div class="tab" data-tab="settings">设置</div>
     <div class="tab" id="help-tab" data-tab="help">帮助</div>
@@ -331,11 +326,8 @@
 
   <script src="vendor/xterm.js?v=52"></script>
   <script src="vendor/xterm-addon-fit.js?v=52"></script>
-  <script src="db-flash.js?v=52"></script>
   <script src="tool-floating-window.js?v=52"></script>
   <script src="remote-tool-context.js?v=52"></script>
-  <script src="db-remote-files.js?v=52"></script>
-  <script src="db-flash-app.js?v=52"></script>
   <script src="command-column-editor.js?v=53"></script>
   <script src="extension-tool-selection.js?v=1"></script>
   <script src="app.js?v=56"></script>
@@ -347,7 +339,6 @@
   <script src="serial-controls-window.js?v=1"></script>
   <script src="serial-logging.js?v=1"></script>
   <script src="serial-terminal.js?v=55"></script>
-  <script src="usb-relay.js?v=52"></script>
-  <script src="mijia.js?v=52"></script>
+<script src="plugins.js"></script>
 </body>
 </html>

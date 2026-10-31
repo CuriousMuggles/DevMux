@@ -99,22 +99,37 @@ DESCRIPTIONS['serial'].update({
         {'sessionId': STRING, 'transferId': STRING}, ['sessionId', 'transferId'])})
 
 
-def describe(tool, actions):
+def describe(tool, actions, *, remote_capable=True):
     descriptions = DESCRIPTIONS.get(tool, {})
     result = {name: descriptions.get(name, {'description': '参数由执行端扩展校验',
         'inputSchema': {'type': 'object'}}) for name in actions}
     result['capabilities'] = action('查询能力和独立权限')
-    result['permission'] = action('仅在执行电脑本机修改该扩展的远程权限',
-        {'allowed': {'type': 'boolean'}}, ['allowed'])
+    if remote_capable:
+        result['permission'] = action('仅在执行电脑本机修改该扩展的远程权限',
+            {'allowed': {'type': 'boolean'}}, ['allowed'])
     return result
 
 
 async def invoke(api, name, args):
     manager = api.manager
     if name == 'extensions_list':
-        return {'tools': [{'tool': 'mijia', 'name': '米家', 'actions': DESCRIPTIONS['mijia']}] + [{'tool': key, 'name': service.NAME,
-            'actions': describe(key, sorted(service.ACTIONS))}
-            for key, service in sorted(manager.extension_tools.services.items())]}
+        target=api.resolve(args.get('target','computer:local'),'computer')
+        if not target['local']:
+            response=await manager._run_blocking(remote_call,manager.relay,target['nodeId'],'__plugin_catalog__','list',{})
+            if not response.get('success'):raise RuntimeError(response.get('output','无法读取从机插件列表'))
+            tools=[{'tool':item['tool'],'name':item['name'],'enabled':item['enabled'],
+                    'remoteAllowed':item['remoteAllowed'],'actions':describe(item['tool'],item.get('actions',[]))}
+                   for item in response.get('data',{}).get('plugins',[]) if item.get('remoteCapable')]
+            try:
+                serial=await manager._run_blocking(remote_call,manager.relay,target['nodeId'],'serial','capabilities',{})
+                if serial.get('success'):
+                    data=serial['data'];tools.insert(0,{'tool':'serial','name':data['name'],'enabled':True,
+                        'remoteAllowed':data['remoteAllowed'],'actions':describe('serial',data['actions'])})
+            except Exception:pass  # A peer may have no serial service; plugin discovery still applies.
+            return {'target':args['target'],'tools':tools}
+        return {'tools': [{'tool': key, 'name': service.NAME,
+            'actions': describe(key, sorted(service.ACTIONS),remote_capable=getattr(service,'remote_supported',True))}
+            for key, service in sorted(manager.extension_tools.services.copy().items())]}
     target = api.resolve(args['target'], 'computer')
     tool = args['tool']
     operation = 'capabilities' if name == 'extension_capabilities' else args['action']
@@ -122,19 +137,14 @@ async def invoke(api, name, args):
     if tool == 'mijia':
         if not target['local']:
             raise PermissionError('米家仅支持本机调用')
-        if operation == 'capabilities':
-            return {'success': True, 'data': {'actions': list(DESCRIPTIONS['mijia']),
-                'agentActions': DESCRIPTIONS['mijia'], 'restrictions': ['仅支持本机调用']},
-                'target': args['target'], 'tool': tool, 'action': operation}
-        schema = DESCRIPTIONS['mijia'].get(operation, {}).get('inputSchema')
-        if not schema or not isinstance(arguments, dict) or set(arguments) - set(schema['properties']) or set(schema['required']) - set(arguments):
-            raise ValueError('米家动作或参数无效')
-        for key, value in arguments.items():
-            kind = schema['properties'][key]['type']
-            if (kind == 'boolean' and type(value) is not bool) or (kind == 'string' and not isinstance(value, str)):
-                raise ValueError(f'参数 {key} 类型无效')
-        data = await manager._run_blocking(manager.mijia.call, api, operation, arguments)
-        return {'success': True, 'data': data, 'target': args['target'], 'tool': tool, 'action': operation}
+        if operation != 'capabilities':
+            schema = DESCRIPTIONS['mijia'].get(operation, {}).get('inputSchema')
+            if not schema or not isinstance(arguments, dict) or set(arguments) - set(schema['properties']) or set(schema['required']) - set(arguments):
+                raise ValueError('米家动作或参数无效')
+            for key, value in arguments.items():
+                kind = schema['properties'][key]['type']
+                if (kind == 'boolean' and type(value) is not bool) or (kind == 'string' and not isinstance(value, str)):
+                    raise ValueError(f'参数 {key} 类型无效')
     # 薄客户端先生成标识；直接使用认证 WS 的调用者也必须事先知道原请求标识。
     if (tool == 'db-flash' and operation == 'start') or (tool == 'serial' and operation == 'open'):
         identifier = arguments.get('requestId')
@@ -150,8 +160,9 @@ async def invoke(api, name, args):
                   'data': {'requestId': arguments.get('requestId'), 'jobId': arguments.get('jobId')}}
     if operation == 'capabilities' and result.get('success'):
         data = result['data']
-        result = {**result, 'data': {**data, 'agentActions': describe(tool, data['actions']),
-            'restrictions': ['远程不能修改执行端权限', '远程DB不能自定义pythonPath或fastbootPath',
-                             '结果不确定时不得自动重复物理动作']}}
+        remote_capable=data.get('remoteCapable',True)
+        result = {**result, 'data': {**data, 'agentActions': describe(tool, data['actions'],remote_capable=remote_capable),
+            'restrictions': (['远程不能修改执行端权限', '远程DB不能自定义pythonPath或fastbootPath',
+                             '结果不确定时不得自动重复物理动作'] if remote_capable else ['仅支持本机调用'])}}
     return {**result, 'target': args['target'], 'tool': tool, 'action': operation,
             'requestId': arguments.get('requestId')}

@@ -162,6 +162,7 @@ function connectWS() {
 
   ws.onopen = () => {
     console.log('WS connected');
+    window.PluginIntegration?.refresh();
     updateConnectionStatus(true);
     // 中转状态与配置在连接建立后拉取（断线重连时也刷新）。配置不许盖掉用户正在
     // 弹窗里编、还没保存的改动，那种情况下等他保存或点刷新即可。
@@ -233,11 +234,7 @@ function callWS(type, payload = {}, timeoutMs = 15000) {
 }
 
 function handleWSMessage(msg) {
-  if (String(msg.type || '').startsWith('desktop-terminal-')) { if (!window.MijiaIntegration?.accept(msg) && !window.SerialControlsWindow?.accept(msg)) window.TerminalWindows?.accept(msg); return; }
-  if (msg.type === 'db-flash-progress') {
-    window.DBFlashIntegration?.acceptProgress(msg);
-    return;
-  }
+  if (String(msg.type || '').startsWith('desktop-terminal-')) { if (!window.PluginIntegration?.accept(msg) && !window.SerialControlsWindow?.accept(msg)) window.TerminalWindows?.accept(msg); return; }
   if (msg.type === 'diagnostic-progress') {
     handleDiagnosticProgress(msg);
     return;

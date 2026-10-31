@@ -1,0 +1,28 @@
+{
+  "id": "db-flash",
+  "name": "DB 固化烧写",
+  "description": "镜像识别、烧写计划与任务日志",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "backend": "main.py",
+  "frontend": "index.html",
+  "window": {
+    "width": 1100,
+    "height": 820
+  },
+  "tool": "db-flash",
+  "actions": [
+    "config",
+    "save",
+    "browse",
+    "catalog",
+    "plan",
+    "start",
+    "status",
+    "cancel"
+  ],
+  "permissions": [
+    "pick-file",
+    "pick-directory"
+  ]
+}

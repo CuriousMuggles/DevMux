@@ -122,27 +122,24 @@ class MijiaSecurityTests(unittest.TestCase):
 
 
 class MijiaWebSocketTests(unittest.IsolatedAsyncioTestCase):
-    async def test_origin_and_page_token_required(self):
+    async def test_plugin_origin_required(self):
         import server
         from types import SimpleNamespace
-        host = server.ManagerServer.__new__(server.ManagerServer)
-        host.mijia = mock.Mock()
-        async def execute(fn, *args): return fn(*args)
-        sent = []
-        async def send(ws, data): sent.append(data)
-        host._run_blocking = execute
-        host._send = send
-        ws = SimpleNamespace(request=SimpleNamespace(headers={'Origin':'http://attacker.example'}))
-        await host._handle_message(ws, {'type':'mijia','id':1,'action':'status','pageToken':server._MIJIA_PAGE_TOKEN})
-        self.assertFalse(sent[-1]['success'])
-        ws.request.headers['Origin'] = f'http://127.0.0.1:{server._HTTP_PORT}'
-        await host._handle_message(ws, {'type':'mijia','id':2,'action':'status','pageToken':'wrong'})
-        self.assertFalse(sent[-1]['success'])
-        host.mijia.call.assert_not_called()
-        host.mijia.call.return_value = {'loggedIn':False}
-        await host._handle_message(ws, {'type':'mijia','id':3,'action':'status','pageToken':server._MIJIA_PAGE_TOKEN})
+        host=server.ManagerServer.__new__(server.ManagerServer)
+        host.plugins=mock.Mock()
+        host.plugins.dispatch.return_value={'success':True,'data':{'loggedIn':False}}
+        async def execute(fn,*args):return fn(*args)
+        sent=[]
+        async def send(ws,data):sent.append(data)
+        host._run_blocking=execute;host._send=send
+        ws=SimpleNamespace(request=SimpleNamespace(headers={'Origin':'http://attacker.example'}))
+        request={'type':'plugin-manager','id':1,'action':'call','arguments':{'id':'mijia','action':'status'}}
+        await host._handle_message(ws,request)
+        self.assertFalse(sent[-1]['success']);host.plugins.dispatch.assert_not_called()
+        ws.request.headers['Origin']=f'http://127.0.0.1:{server._HTTP_PORT}'
+        await host._handle_message(ws,request)
         self.assertTrue(sent[-1]['success'])
-        self.assertEqual(sent[-1]['data'], {'loggedIn':False})
+        self.assertEqual(sent[-1]['data']['data'],{'loggedIn':False})
 
 def run():
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]))

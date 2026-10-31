@@ -196,13 +196,42 @@ def run():
     def augmented(ws_url, url, manager):
         existing_ok = original(ws_url, url, manager)
         computer_ok = check_computer(ws_url, url, manager)
-        from tests.test_usb_relay import check_ui
-        usb_ok = check_ui(ws_url, url, manager)
-        from tests.test_extension_tools import check_ui as check_remote_ui
-        remote_usb_ok = check_remote_ui(ws_url, url, manager)
-        from tests.test_db_flash_remote import check_ui as check_db_ui
-        db_ok = check_db_ui(ws_url, url, manager)
-        return existing_ok and computer_ok and usb_ok and remote_usb_ok and db_ok
+        import base64
+        from plugin_pack import pack
+        with tempfile.TemporaryDirectory() as temp:
+            from plugin_manager import PluginManager
+            previous_plugins = manager.plugins
+            manager.plugins = PluginManager(Path(temp)/'installed', manager.extension_tools)
+            try:
+                for identifier, action in [('usb-relay','config'),('db-flash','config'),('mijia','status')]:
+                    assert not any(p['id']==identifier for p in manager.plugins.store.list()), '测试必须使用隔离插件目录'
+                    package=pack(ROOT/'plugins'/identifier,Path(temp)/(identifier+'.dmp'))
+                    payload=base64.b64encode(package.read_bytes()).decode()
+                    expression="""(async()=>{
+                      const id=IDENTIFIER;
+                      const install=await callWS('plugin-manager',{action:'install',arguments:{package:PACKAGE}},40000);
+                      if(!install.success)throw Error(install.output);
+                      const enabled=await callWS('plugin-manager',{action:'enable',arguments:{id}});
+                      if(!enabled.success)throw Error(enabled.output);
+                      await window.PluginIntegration.refresh();
+                      const entry=document.querySelector('[data-plugin-menu="'+id+'"]');
+                      if(!entry)throw Error('安装后菜单未出现');
+                      entry.click();
+                      for(let i=0;i<100&&!window.PluginIntegration.isOpen(id);i++)await new Promise(r=>setTimeout(r,50));
+                      if(!window.PluginIntegration.isOpen(id)||document.querySelector('iframe'))throw Error('独立插件窗口未打开: '+document.querySelector('#plugin-manager [role=status]').textContent);
+                      const response=await callWS('plugin-manager',{action:'call',arguments:{id,action:ACTION}});
+                      if(!response.success||!response.data.success)throw Error('插件后端调用失败');
+                      await callWS('plugin-manager',{action:'disable',arguments:{id}});
+                      await callWS('plugin-manager',{action:'uninstall',arguments:{id}});
+                      await window.PluginIntegration.refresh();
+                      return !document.querySelector('[data-plugin-menu="'+id+'"]');
+                    })()""".replace('IDENTIFIER',json.dumps(identifier)).replace('PACKAGE',json.dumps(payload)).replace('ACTION',json.dumps(action))
+                    assert base._cdp_eval(ws_url,url,expression), identifier
+                    print('  [PASS] 实际插件安装、菜单打开、后端调用和卸载',identifier)
+            finally:
+                manager.plugins.close()
+                manager.plugins = previous_plugins
+        return existing_ok and computer_ok
     base._check_live_relay = augmented
     try:
         return base.run()

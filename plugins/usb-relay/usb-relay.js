@@ -37,16 +37,16 @@
     </details>
     <p id="usb-relay-message" role="status" aria-live="polite">查找并打开设备。</p>
   </div>`;
-  document.body.appendChild(overlay);
-  const floating = new window.ToolFloatingWindow(overlay, overlay.querySelector('.usb-relay-dialog'),
-    overlay.querySelector('.diagnostic-header'), {width: 560, height: 720, side: 'right'});
+  const dialog=overlay.querySelector('.usb-relay-dialog');
+  dialog.querySelector('header, .diagnostic-header').hidden=true;
+  const floating=DevMuxPlugin.ui.mount({title:'USB 继电器',description:'查看设备状态并控制继电器通道',content:dialog});
   const el = suffix => document.getElementById('usb-relay-' + suffix);
   let model = {devices: [], states: [], opened: false, channels: 0, serial: ''};
   let busy = false;
   let refreshPending = null;
   let previousFocus;
   let timer;
-  const context = new RemoteToolContext(el('target-context'), 'relay', async () => {
+  const context = new DevMuxPlugin.RemoteContext(el('target-context'), 'relay', async () => {
     model = {devices: [], states: [], opened: false, channels: 0, serial: ''};
     el('message').textContent = context.status.textContent;
     render();
@@ -149,20 +149,20 @@
       ? previousFocus : document.getElementById('tools-tab');
     focus?.focus();
   }
-  document.getElementById('tools-usb-relay').addEventListener('click', async () => {
-    document.getElementById('tools-menu').style.display = 'none';
-    if (floating.visible) { floating.raise(); return; }
+  async function start() {
     previousFocus = document.activeElement;
     floating.show();
-    el('dismiss').focus();
     await context.refresh();
+    if(!floating.visible)return;
     clearInterval(timer);
-    timer = setInterval(() => {
-      if (overlay.style.display !== 'none' && model.opened && context.ready && !busy && !document.hidden && !el('diagnostics').open) call('status', {}, true);
+    timer = DevMuxPlugin.interval(() => {
+      if (floating.visible && model.opened && context.ready && !busy && !document.hidden && !el('diagnostics').open) call('status', {}, true);
     }, 5000);
-  });
+  }
+  DevMuxPlugin.onDispose(()=>clearInterval(timer));
+  start();
   el('dismiss').addEventListener('click', dismiss);
-  overlay.addEventListener('keydown', e => {
+  floating.element.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.stopPropagation(); dismiss(); }
   });
   el('scan').addEventListener('click', () => call('scan'));

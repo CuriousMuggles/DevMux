@@ -1,0 +1,9 @@
+{
+  "id": "example",
+  "name": "插件开发示例",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "backend": "main.py",
+  "frontend": "index.html",
+  "permissions": []
+}

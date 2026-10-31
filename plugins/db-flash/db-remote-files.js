@@ -14,11 +14,12 @@ window.DBRemoteFiles = class {
         <button data-picker="load">打开目录</button><button data-picker="up">上一级</button></div>
       <p data-picker="message" role="status"></p><div data-picker="files" class="db-remote-file-list"></div>
       <div class="db-flash-actions"><button data-picker="accept">使用所选文件</button></div>`;
-    this.layer.appendChild(dialog);
-    document.body.appendChild(this.layer);
     this.el = name => dialog.querySelector('[data-picker="' + name + '"]');
-    this.floating = new ToolFloatingWindow(this.layer, dialog, dialog.querySelector('header'),
-      {width: 700, height: 600, side: 'right'});
+    dialog.querySelector('header').hidden=true;
+    this.floating=DevMuxPlugin.ui.dialog({title:'选择从机文件',content:dialog});
+    this.layer=this.floating.element;
+    this.layer.addEventListener('close',()=>{if(this.resolve)this.finish(null);});
+    DevMuxPlugin.onDispose(()=>this.finish(null));
     this.selected = new Set();
     this.el('close').onclick = () => this.finish(null);
     this.el('accept').onclick = () => this.finish(this.kind === 'directory'

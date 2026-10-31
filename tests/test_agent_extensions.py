@@ -116,7 +116,7 @@ class ExtensionsTests(unittest.IsolatedAsyncioTestCase):
         names = {item['name'] for item in listed['result']['tools']}
         self.assertTrue({'extensions_list','extension_capabilities','extension_call'} <= names)
         discovered = await agent_client.call('extensions_list',{})
-        self.assertEqual({item['tool'] for item in discovered['data']['tools']},{'relay','db-flash','mijia'})
+        self.assertEqual({item['tool'] for item in discovered['data']['tools']},{'relay','db-flash'})
         caps = await agent_client.call('extension_capabilities',{'target':self.target,'tool':'db-flash'})
         data = self.result(caps)
         self.assertFalse(data['allowed'])
@@ -126,7 +126,7 @@ class ExtensionsTests(unittest.IsolatedAsyncioTestCase):
             'extensions_list'],capture_output=True,text=True,encoding='utf-8',timeout=15,
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertEqual(cli.returncode,0,cli.stderr)
-        self.assertEqual(len(json.loads(cli.stdout)['data']['tools']),3)
+        self.assertEqual(len(json.loads(cli.stdout)['data']['tools']),2)
         with self.assertRaises(ValueError):
             await self.manager.agent.call('extension_call',{'target':self.target,'tool':'relay',
                 'action':'set','arguments':False})
@@ -140,6 +140,106 @@ class ExtensionsTests(unittest.IsolatedAsyncioTestCase):
             uncertain = await self.call('relay','set',{'channel':1,'operation':'open'})
         self.assertTrue(uncertain['data']['operationUncertain'])
         self.assertFalse(uncertain['data']['success'])
+
+    async def test_installed_mijia_plugin_controls_mcp_discovery_and_lifecycle(self):
+        import base64
+        from contextlib import closing
+        from plugin_pack import pack
+        from plugin_manager import PluginManager
+        def names(response):return {item['tool'] for item in response['data']['tools']}
+        self.assertNotIn('mijia',names(await agent_client.call('extensions_list',{})))
+        with closing(PluginManager(self.root/'mijia-plugins',self.local)) as plugins:
+            package=pack(ROOT/'plugins/mijia',self.root/'mijia.dmp')
+            plugins.dispatch('install',{'package':base64.b64encode(package.read_bytes()).decode()})
+            self.assertNotIn('mijia',names(await agent_client.call('extensions_list',{})))
+            plugins.dispatch('enable',{'id':'mijia'})
+            self.assertIn('mijia',names(await agent_client.call('extensions_list',{})))
+            response=await agent_mcp.dispatch({'jsonrpc':'2.0','id':31,'method':'tools/call','params':{'name':'extension_call','arguments':{'target':'computer:local','tool':'mijia','action':'status','arguments':{}}}})
+            self.assertFalse(response['result']['isError'],response)
+            self.assertFalse(self.result(await self.call('mijia','status',target='computer:local'))['loggedIn'])
+            caps=self.result(await agent_client.call('extension_capabilities',{'target':'computer:local','tool':'mijia'}))
+            self.assertEqual(set(caps['agentActions']),{'status','snapshot','read-switch','set-switch','capabilities'})
+            for action,args in [('login',{}),('logout',{}),('permission',{'allowed':True}),('set-switch',{'did':'1','value':'true'}),('snapshot',{'refreshCatalog':'yes'})]:
+                rejected=await self.call('mijia',action,args,'computer:local')
+                self.assertFalse(rejected['success'] and rejected.get('data',{}).get('success',False),rejected)
+            for action in ('capabilities','status','permission'):
+                with self.assertRaises((PermissionError,ValueError)):
+                    self.local.call('mijia',action,{},remote=True,authorize=lambda:'master')
+            plugins.dispatch('disable',{'id':'mijia'})
+            self.assertNotIn('mijia',names(await agent_client.call('extensions_list',{})))
+            unavailable=await self.call('mijia','status',target='computer:local')
+            self.assertFalse(unavailable['success'] and unavailable.get('data',{}).get('success',False))
+            plugins.dispatch('uninstall',{'id':'mijia'})
+            self.assertNotIn('mijia',names(await agent_client.call('extensions_list',{})))
+
+    async def test_mijia_mcp_cloud_actions_use_plugin_and_dynamic_plugin_is_discovered(self):
+        import base64,shutil
+        from contextlib import closing
+        from plugin_manager import PluginManager
+        from plugin_pack import pack
+        source=self.root/'mijia-source';shutil.copytree(ROOT/'plugins/mijia',source)
+        with (source/'main.py').open('a',encoding='utf-8') as stream:
+            stream.write("\nclass FakeCloud:\n    available=True\n    value=False\n    def get_devices_list(self): return [{'did':'fixture','name':'Fixture','isOnline':True,'model':'test'}]\n    def get_devices_prop(self, query):\n        result={'did':'fixture','siid':2,'piid':1,'code':0,'value':self.value}\n        return [result] if isinstance(query,list) else result\n    def set_devices_prop(self, query):\n        self.value=query['value'];return {'code':0}\noriginal_factory=create_plugin\ndef create_plugin(root):\n    plugin=original_factory(root)\n    fake=FakeCloud()\n    plugin.service._api=lambda:fake\n    plugin.service._switch_spec=lambda api,item:{'siid':2,'piid':1}\n    return plugin\n")
+        with closing(PluginManager(self.root/'mock-plugins',self.local)) as plugins:
+            archive=pack(source,self.root/'mock-mijia.dmp')
+            plugins.dispatch('install',{'package':base64.b64encode(archive.read_bytes()).decode()})
+            plugins.dispatch('enable',{'id':'mijia'})
+            snapshot=self.result(await self.call('mijia','snapshot',{'refreshCatalog':True},'computer:local'))
+            self.assertEqual(snapshot['devices'][0]['did'],'fixture')
+            self.assertFalse(self.result(await self.call('mijia','read-switch',{'did':'fixture'},'computer:local'))['on'])
+            self.assertTrue(self.result(await self.call('mijia','set-switch',{'did':'fixture','value':True},'computer:local'))['on'])
+            future=self.root/'future-source';future.mkdir()
+            (future/'manifest.json').write_text(json.dumps({'id':'new-local-tool','name':'New Tool','version':'1','apiVersion':1,'backend':'main.py','localActions':['ping']}),encoding='utf-8')
+            (future/'main.py').write_text("class Tool:\n    def call(self, action, arguments): return {'success':True,'data':arguments}\ndef create_plugin(root): return Tool()\n",encoding='utf-8')
+            archive=pack(future,self.root/'future.dmp')
+            plugins.dispatch('install',{'package':base64.b64encode(archive.read_bytes()).decode()})
+            plugins.dispatch('enable',{'id':'new-local-tool'})
+            listed=(await agent_client.call('extensions_list',{}))['data']['tools']
+            self.assertIn('new-local-tool',{item['tool'] for item in listed})
+            self.assertEqual(self.result(await self.call('new-local-tool','ping',{'value':7},'computer:local')),{'value':7})
+            self.assertFalse(next(item for item in plugins.remote_catalog() if item['id']=='new-local-tool')['remoteCapable'])
+            plugins.dispatch('disable',{'id':'new-local-tool'})
+            plugins.dispatch('uninstall',{'id':'new-local-tool'})
+            self.assertNotIn('new-local-tool',{item['tool'] for item in (await agent_client.call('extensions_list',{}))['data']['tools']})
+
+    async def test_remote_plugin_discovery_tracks_slave_install_state_without_host_plugin(self):
+        import base64
+        from contextlib import closing
+        from plugin_pack import pack
+        from plugin_manager import PluginManager
+        registry=ExtensionTools({})
+        with closing(PluginManager(self.root/'slave-plugin-catalog',registry)) as plugins:
+            registry.plugin_manager=plugins
+            previous=self.harness.slave.extension_tools
+            self.harness.slave.extension_tools=registry
+            self.harness.slave.node.extension_tools=registry
+            try:
+                for identifier in ('usb-relay','mijia'):
+                    archive=pack(ROOT/'plugins'/identifier,self.root/(identifier+'.dmp'))
+                    plugins.dispatch('install',{'package':base64.b64encode(archive.read_bytes()).decode()})
+                listed=await agent_client.call('extensions_list',{'target':self.target})
+                self.assertTrue(listed['success'],listed)
+                relay=next(item for item in listed['data']['tools'] if item['tool']=='relay')
+                self.assertFalse(relay['enabled'])
+                self.assertFalse(relay['remoteAllowed'])
+                self.assertNotIn('mijia',{item['tool'] for item in listed['data']['tools']})
+                plugins.dispatch('allow-remote',{'id':'usb-relay','allowed':True})
+                listed=await agent_client.call('extensions_list',{'target':self.target})
+                relay=next(item for item in listed['data']['tools'] if item['tool']=='relay')
+                self.assertTrue(relay['enabled']);self.assertTrue(relay['remoteAllowed'])
+                self.assertIn('set',relay['actions'])
+                plugins.dispatch('allow-remote',{'id':'usb-relay','allowed':False})
+                listed=await agent_client.call('extensions_list',{'target':self.target})
+                self.assertFalse(next(item for item in listed['data']['tools'] if item['tool']=='relay')['remoteAllowed'])
+                plugins.dispatch('disable',{'id':'usb-relay'})
+                listed=await agent_client.call('extensions_list',{'target':self.target})
+                self.assertFalse(next(item for item in listed['data']['tools'] if item['tool']=='relay')['enabled'])
+                plugins.dispatch('uninstall',{'id':'usb-relay'})
+                listed=await agent_client.call('extensions_list',{'target':self.target})
+                self.assertNotIn('relay',{item['tool'] for item in listed['data']['tools']})
+            finally:
+                self.harness.slave.extension_tools=previous
+                self.harness.slave.node.extension_tools=previous
 
     async def test_relay_mcp_remote_permission_no_local_fallback(self):
         denied = await self.call('relay','scan')

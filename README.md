@@ -14,7 +14,7 @@
 - **文件传输**：在电脑和设备之间上传文件或文件夹、批量下载文件；支持通过中转操作远程设备。
 - **AI Agent 接入**：通过 MCP 或 CLI 调用统一接口，支持设备和部分扩展工具操作。配置与调用方式见 [Agent 使用说明](AGENT_USAGE.md)。
 - **串口与系统终端**：打开本机或远程 PowerShell、串口终端，支持文本和 HEX 交互、快捷指令及 XMODEM 传输。
-- **扩展工具**：提供 USB 继电器控制、DB 固化烧写，以及受支持的米家设备管理。
+- **插件工具**：USB 继电器、DB 固化烧写和米家设备管理通过独立 `.dmp` 插件安装。工具菜单 → 插件管理中安装后，点击工具菜单中新出现的插件名称即可打开，无需重启。串口和跨机中转仍为核心功能。
 
 ## 快速开始
 
@@ -68,3 +68,17 @@ python -B tests\run_all.py
 ## 许可
 
 DevMux 自有代码以 [GPL-3.0-or-later](LICENSE) 授权。第三方组件使用各自的许可证，详见 [第三方许可清单](THIRD_PARTY_LICENSES.md)。公开发布前仍需完成该清单中列出的核查。
+
+### 构建官方插件
+
+```powershell
+python plugin_pack.py plugins/usb-relay dist/usb-relay.dmp
+python plugin_pack.py plugins/db-flash dist/db-flash.dmp
+python plugin_pack.py plugins/mijia dist/mijia.dmp
+```
+
+插件界面保留原工具的工作流程。停用或卸载前须先结束活动任务；更新时先停用，再安装新包。基础程序不预装上述三个插件。开发接口见 [插件开发说明](docs/plugin-development.md)。
+
+插件管理支持选择已验证的从机并批量传送安装包。从机需在本地开启“允许已验证主控远程安装插件”；安装不会自动启用或授权。需要远程操作时，在从机插件卡片开启“允许主控使用（自动启用）”。工具菜单始终保留本机已启用的工具，并按从机分组展示其已安装的远程工具；管理对象切换不影响本机入口。未启用或未授权时提示在从机开启。从机独有插件可按需加载界面并缓存，无需在主机安装后端；远程窗口标明电脑名称，操作固定到对应从机。米家仍仅支持本机使用。
+
+插件开发提供统一 Python/前端 SDK、公共主题与界面组件，以及 `plugin_dev.py create/check/serve/pack` 工具链。可以从标准工程起步，在临时环境直接调试源码，最终打包为单个 `.dmp`；继电器、DB、米家使用相同公开底座。详见 [插件开发指南](docs/plugin-development.md)。

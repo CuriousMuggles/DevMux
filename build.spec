@@ -16,8 +16,6 @@ from pathlib import Path
 # every PTY session dies with EOF right after spawn.
 import winpty
 from app_version import windows_version_resource
-from relay_probe_build import build_relay_probe
-_RELAY_PROBE = build_relay_probe(SPECPATH)
 _WINPTY_DIR = _os.path.dirname(winpty.__file__)
 
 # 发布目录可能残留上次运行生成的日志；它们不属于发布包。
@@ -61,12 +59,13 @@ a = Analysis(
     datas=[
         # Include frontend renderer directory
         ('renderer', 'renderer'),
+        ('plugin_sdk/sdk.js', 'plugin_sdk'),
+        ('plugin_sdk/ui.css', 'plugin_sdk'),
         ('db_download_host.py', '.'),
         (_os.path.join(_ADB_DIR, 'mke2fs.conf'), 'adb'),
-        (str(_RELAY_PROBE), 'relay'),
-        (str(Path(SPECPATH) / 'vendor' / 'usb-relay' / 'bin' / 'usb_relay_device.dll'), 'relay'),
     ],
     hiddenimports=[
+        'plugin_sdk',
         'mijiaAPI', 'qrcode.image.svg', 'Crypto.Cipher.ARC4', 'tzlocal',
         # pywebview internals
         'webview',

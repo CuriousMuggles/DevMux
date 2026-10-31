@@ -11,16 +11,27 @@ class RemoteToolError(RuntimeError):
 class ExtensionTools:
     def __init__(self, services):
         self.services = dict(services)
+        self.plugin_manager = None
 
     def call(self, tool, action, arguments=None, *, remote=False, authorize=None, caller='agent'):
+        if tool == '__plugin_catalog__':
+            if not remote or authorize is None or self.plugin_manager is None:
+                raise PermissionError('插件管理仅允许已验证的远程连接')
+            with self.plugin_manager.lock:
+                owner=authorize()
+                if not owner:raise PermissionError('缺少已验证的主控身份')
+                return {'success':True,'output':'','data':self.plugin_manager.remote.call(action,arguments or {},owner)}
         service = self.services.get(tool)
         if service is None:
-            raise ValueError('本版本不支持该扩展工具，请升级执行端')
+            raise ValueError('执行端未安装或未启用该工具插件')
         arguments = {} if arguments is None else arguments
         if not isinstance(arguments, dict):
             raise ValueError('扩展工具参数必须为对象')
         if caller not in ('gui', 'agent'):
             raise ValueError('扩展调用来源无效')
+        remote_supported=getattr(service,'remote_supported',True)
+        if remote and not remote_supported:
+            raise PermissionError('该插件仅支持执行端本机调用')
         # 锁覆盖权限检查与调用，禁止撤销权限和排队操作相互穿越。
         with service._lock:
             owner = 'local'
@@ -29,8 +40,10 @@ class ExtensionTools:
             if action == 'capabilities':
                 return dict(success=True, output='', data=dict(tool=tool, version=1,
                     name=service.NAME, allowed=not remote or service.remote_allowed,
-                    remoteAllowed=service.remote_allowed, actions=sorted(service.ACTIONS)))
+                    remoteAllowed=service.remote_allowed, remoteCapable=remote_supported,
+                    actions=sorted(getattr(service,'remote_actions',service.ACTIONS) if remote else service.ACTIONS)))
             if action == 'permission':
+                if not remote_supported:raise PermissionError('该插件不提供远程权限设置')
                 if remote:
                     raise PermissionError('远程权限只能在执行端本机修改')
                 return service.set_remote_permission(arguments.get('allowed'))
@@ -38,6 +51,8 @@ class ExtensionTools:
                 raise PermissionError(f'从机未允许远程{service.NAME}控制，请在从机{service.NAME}面板开启')
             if action not in service.ACTIONS:
                 raise ValueError('不支持的扩展工具动作')
+            if remote and action not in getattr(service,'remote_actions',service.ACTIONS):
+                raise PermissionError('该动作仅支持执行端本机调用')
             if hasattr(service, 'call_for_context'):
                 if remote and not owner:
                     raise PermissionError('远程接入缺少已验证的主控身份')
@@ -51,7 +66,7 @@ class ExtensionTools:
 
     def close_owner(self, owner=None):
         """撤销连接的持续接入；不会结束其他工具的持久硬件任务。"""
-        for service in self.services.values():
+        for service in list(self.services.values()):
             if hasattr(service, 'close_owner'):
                 service.close_owner(owner, remote_only=owner is None)
 

@@ -1,0 +1,20 @@
+{
+  "id": "usb-relay",
+  "name": "USB 继电器",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "backend": "main.py",
+  "frontend": "index.html",
+  "tool": "relay",
+  "actions": [
+    "config",
+    "save",
+    "scan",
+    "open",
+    "close",
+    "status",
+    "set",
+    "diagnose"
+  ],
+  "permissions": []
+}

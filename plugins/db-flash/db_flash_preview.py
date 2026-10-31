@@ -17,7 +17,7 @@ import websockets
 from db_flash import DBFlashService, SimulationExecutor
 
 ROOT = Path(__file__).resolve().parent
-RENDERER = ROOT / 'renderer'
+RENDERER = ROOT
 CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 

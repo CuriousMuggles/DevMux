@@ -14,8 +14,6 @@ from pathlib import Path
 # winpty-agent.exe — both must be bundled or PTY sessions die with EOF.
 import winpty
 from app_version import windows_version_resource
-from relay_probe_build import build_relay_probe
-_RELAY_PROBE = build_relay_probe(SPECPATH)
 _WINPTY_DIR = _os.path.dirname(winpty.__file__)
 
 # 调试包同样不携带运行日志；commands.json 不打包，也不删除用户配置。
@@ -52,11 +50,12 @@ a = Analysis(
     ] + _ADB_BINARIES,
     datas=[
         ('renderer', 'renderer'),
+        ('plugin_sdk/sdk.js', 'plugin_sdk'),
+        ('plugin_sdk/ui.css', 'plugin_sdk'),
         ('db_download_host.py', '.'),
-        (str(_RELAY_PROBE), 'relay'),
-        (str(Path(SPECPATH) / 'vendor' / 'usb-relay' / 'bin' / 'usb_relay_device.dll'), 'relay'),
     ],
     hiddenimports=[
+        'plugin_sdk',
         'mijiaAPI', 'qrcode.image.svg', 'Crypto.Cipher.ARC4', 'tzlocal',
         'webview',
         'webview.platforms.edgechromium',

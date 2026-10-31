@@ -42,19 +42,84 @@ class DesktopTests(unittest.IsolatedAsyncioTestCase):
         self.service.close_all(other);self.assertEqual(len(self.service.records),1)
         self.service.close_all(self.owner);self.assertFalse(self.service.records)
 
-    async def test_mijia_view_requires_correct_key_and_resyncs(self):
-        with self.assertRaises(ValueError):
-            await self.service.handle(self.owner,dict(type='desktop-terminal-open',key='other',title='x',view='mijia'))
-        with self.assertRaises(ValueError):
-            await self.service.handle(self.owner,dict(type='desktop-terminal-open',key='mijia-panel',title='x',view='invalid'))
-        opened=await self.service.handle(self.owner,dict(type='desktop-terminal-open',key='mijia-panel',title='米家',view='mijia'))
-        self.assertIn('/desktop-mijia.html#',opened['url'])
+    async def test_plugin_native_window_can_move_outside_main_window(self):
+        def dispatch(action,args):
+            if action=='list':return [{'id':'example','enabled':True,'tool':'example'}]
+            return {'success':True,'data':{'text':'ok'}}
+        self.manager.plugins=SimpleNamespace(dispatch=dispatch)
+        window=Window()
+        self.service.bind_native(SimpleNamespace(create_window=lambda *a,**k:window))
+        opened=await self.service.handle(self.owner,dict(type='desktop-terminal-open',view='plugin',key='plugin:example',title='插件'))
+        self.assertTrue(opened['native']);self.assertIn('/desktop-plugin.html#',opened['url'])
+        await self.service.handle(self.owner,dict(type='desktop-terminal-move',windowId=opened['windowId'],x=-900,y=300))
+        self.assertEqual(window.position,(-900,300))
         record=self.service.records[opened['windowId']]
-        record['child']=SimpleNamespace()
-        record['resync']=True
-        await self.service.enqueue(record,dict(kind='mijia-snapshot',initial=True,html='<p>测试</p>'))
-        self.assertFalse(record['resync'])
-        self.service.records.pop(opened['windowId'])
+        await self.service.plugin_request(record,self.owner,{'request':{'type':'devmux-host-call','id':1,'hostType':'extension-tool','hostPayload':{'tool':'serial','action':'open'}}})
+        self.assertFalse(self.messages[-1][1]['payload']['result']['success'])
+        self.service.close_all(self.owner);self.assertTrue(window.destroyed)
+
+    async def test_remote_only_windows_are_separate_per_machine(self):
+        from unittest.mock import Mock,patch
+        dispatch=Mock(side_effect=AssertionError('remote frontend must not use local installation'))
+        self.manager.plugins=SimpleNamespace(dispatch=dispatch)
+        self.manager.relay=object()
+        self.manager.agent=SimpleNamespace(resolve=lambda target,kind:{'local':False,'nodeId':target})
+        with patch('remote_plugins.frontend',return_value={'id':'relay','tool':'relay','html':'<!doctype html>'}):
+            for target in ('computer:a','computer:b'):
+                await self.service.handle(self.owner,dict(type='desktop-terminal-open',view='plugin',key='plugin:relay',title='Relay',target=target))
+            with self.assertRaises(ValueError):
+                await self.service.handle(self.owner,dict(type='desktop-terminal-open',view='plugin',key='plugin:relay',title='Relay',target='computer:a'))
+        dispatch.assert_not_called()
+        dispatch.side_effect=None;dispatch.return_value=[{'id':'relay','tool':'relay','enabled':True}]
+        await self.service.handle(self.owner,dict(type='desktop-terminal-open',view='plugin',key='plugin:relay',title='Local'))
+        self.assertEqual(len(self.service.records),3)
+        self.service.close_all(self.owner)
+
+    async def test_remote_plugin_success_uses_original_node_and_filters_targets(self):
+        import json
+        from unittest.mock import Mock,patch
+        async def blocking(function,*args,**kwargs):return function(*args,**kwargs)
+        self.manager._run_blocking=blocking
+        self.manager.plugins=SimpleNamespace(dispatch=Mock(side_effect=AssertionError('local backend used')))
+        self.manager.relay=object()
+        self.manager.agent=SimpleNamespace(resolve=lambda target,kind:{'nodeId':'slave-node','local':False})
+        record={'plugin_id':'relay','plugin_tool':'relay','plugin_target':'computer:slave','remote_page':{'html':'test'}}
+        with patch('extension_tools.remote_call',return_value={'success':True,'data':{'remote':True}}) as remote:
+            await self.service.plugin_request(record,self.owner,{'request':{'type':'devmux-plugin-call','id':1,'action':'config','arguments':{'x':1}}})
+            remote.assert_called_once_with(self.manager.relay,'slave-node','relay','config',{'x':1},caller='gui')
+            self.assertTrue(self.messages[-1][1]['payload']['result']['success'])
+        async def handle(ws,message):
+            await ws.send(json.dumps({'success':True,'data':{'targets':[{'target':'computer:local'},{'target':'computer:slave'},{'target':'computer:other'}]}}))
+        self.manager._handle_message=handle
+        await self.service.plugin_request(record,self.owner,{'request':{'type':'devmux-host-call','id':2,'hostType':'extension-tool','hostPayload':{'tool':'relay','action':'targets'}}})
+        self.assertEqual(self.messages[-1][1]['payload']['result']['data']['targets'],[{'target':'computer:slave'}])
+
+    async def test_plugin_manifest_file_permissions_are_enforced(self):
+        import json
+        calls=[]
+        async def handle(ws,message):
+            calls.append(message['type']);await ws.send(json.dumps({'success':True,'data':{'path':'fixture'}}))
+        self.manager._handle_message=handle
+        record={'plugin_id':'example','plugin_tool':'example','plugin_permissions':[]}
+        request={'type':'devmux-host-call','id':1,'hostType':'pick-file','hostPayload':{}}
+        await self.service.plugin_request(record,self.owner,{'request':request})
+        self.assertFalse(self.messages[-1][1]['payload']['result']['success'])
+        self.assertEqual(calls,[])
+        record['plugin_permissions']=['pick-file']
+        await self.service.plugin_request(record,self.owner,{'request':request})
+        self.assertTrue(self.messages[-1][1]['payload']['result']['success'])
+        self.assertEqual(calls,['pick-file'])
+
+    async def test_remote_plugin_host_rejects_local_and_cross_tool_routes(self):
+        record={'plugin_id':'relay','plugin_tool':'relay','plugin_target':'computer:slave','remote_page':{'html':'test'}}
+        for tool,target in [('relay','computer:local'),('serial','computer:slave'),('relay','computer:other')]:
+            await self.service.plugin_request(record,self.owner,{'request':{'type':'devmux-host-call','id':1,'hostType':'extension-tool','hostPayload':{'tool':tool,'target':target,'action':'config'}}})
+            self.assertFalse(self.messages[-1][1]['payload']['result']['success'])
+
+    async def test_removed_builtin_mijia_view_is_rejected(self):
+        for key in ('other','mijia-panel'):
+            with self.assertRaises(ValueError):
+                await self.service.handle(self.owner,dict(type='desktop-terminal-open',key=key,title='米家',view='mijia'))
 
     async def test_native_coordinates_and_os_close(self):
         window=Window();calls=[]

@@ -10,7 +10,7 @@
   const layer = document.createElement('div');
   layer.className = 'diagnostic-overlay'; layer.style.display = 'none';
   layer.id = 'plugin-manager';
-  layer.innerHTML = `<div class="diagnostic-dialog plugin-dialog"><div class="diagnostic-header"><div><h3>插件管理</h3><p>按需添加工具，让工作区保持简洁</p></div><button class="diagnostic-close" aria-label="关闭">✕</button></div><div class="plugin-toolbar"><select class="tool-select" data-target aria-label="插件目标电脑"><option value="computer:local">本机</option></select><div><strong>已安装插件</strong><span data-count></span></div><button class="plugin-install">＋ 安装插件</button><input hidden type="file" accept=".dmp" multiple><button data-refresh aria-label="刷新插件列表">↻</button></div><p role="status" aria-live="polite"></p><div data-list></div><label class="plugin-footer" data-policy><input type="checkbox"> 允许已验证主控远程安装插件</label><div class="plugin-footer">选择官方 .dmp 文件安装 · 无需重启 · 更新前请先停用</div></div>`;
+  layer.innerHTML = `<div class="diagnostic-dialog plugin-dialog"><div class="diagnostic-header"><div><h3>插件管理</h3><p>按需添加工具，让工作区保持简洁</p></div><button class="diagnostic-close" aria-label="关闭">✕</button></div><div class="plugin-toolbar"><select class="tool-select" data-target aria-label="插件目标电脑"><option value="computer:local">本机</option></select><div><strong>已安装插件</strong><span data-count></span></div><button class="plugin-install">＋ 安装插件</button><input hidden type="file" accept=".dmp" multiple><button data-refresh aria-label="刷新插件列表">↻</button></div><p role="status" aria-live="polite"></p><div data-list></div><label class="plugin-footer" data-policy><input type="checkbox"> 允许已验证主控远程安装和卸载插件</label><div class="plugin-footer">选择官方 .dmp 文件安装 · 无需重启 · 更新前请先停用</div></div>`;
   document.body.append(layer);
   const managementFloating = new ToolFloatingWindow(layer, layer.firstChild, layer.querySelector('.diagnostic-header'), {width:800,height:640});
   const status = layer.querySelector('[role=status]');
@@ -41,7 +41,7 @@
     const list=remote?group.plugins:local;
     const policy=layer.querySelector('[data-policy]');policy.hidden=remote;
     if(!remote){const value=await rpc('install-policy');policy.querySelector('input').checked=value?.allowed===true;}
-    if(remote && !result.installAllowed)status.textContent='从机未允许远程安装，请在从机插件管理中开启';
+    if(remote && !result.installAllowed)status.textContent='从机未允许远程安装和卸载，请在从机插件管理中开启';
 
     for(const [key,record] of windows)if(record.target==='computer:local'&&!local.some(plugin=>plugin.id===record.pluginId&&plugin.enabled))closeWindow(key);
     for(const [key,record] of windows){const group=groups.find(item=>item.target===record.target);if(group?.result&&!group.plugins.some(plugin=>plugin.id===record.pluginId&&plugin.enabled&&plugin.remoteAllowed))closeWindow(key);}
@@ -61,8 +61,8 @@
       const version=document.createElement('small');version.textContent='v'+plugin.version;info.append(version);identity.append(info);row.append(identity);
       const actions=document.createElement('div');actions.className='plugin-actions';
       const badge=document.createElement('span');badge.className='plugin-badge '+(plugin.enabled?'is-enabled':'');badge.textContent=plugin.enabled?'已启用':'已停用';actions.append(badge);
-      for (const [label, action] of (remote?[[!plugin.remoteCapable?'仅支持从机本地使用':plugin.remoteAllowed?'打开':'请在从机开启允许主控使用','open']]:[[plugin.enabled ? '停用' : '启用',plugin.enabled ? 'disable' : 'enable'],...(plugin.frontend ? [['打开','open']] : []),['卸载','uninstall']])) {
-        const button = document.createElement('button');button.textContent=label;button.dataset.action=action;if(remote&&(!plugin.enabled||!plugin.remoteAllowed||!plugin.frontend||!plugin.remoteCapable))button.disabled=true;actions.append(button);
+      for (const [label, action] of (remote?[[!plugin.remoteCapable?'仅支持从机本地使用':plugin.remoteAllowed?'打开':'请在从机开启允许主控使用','open'],['卸载','uninstall']]:[[plugin.enabled ? '停用' : '启用',plugin.enabled ? 'disable' : 'enable'],...(plugin.frontend ? [['打开','open']] : []),['卸载','uninstall']])) {
+        const button = document.createElement('button');button.textContent=label;button.dataset.action=action;if(remote&&(action==='open'?(!plugin.enabled||!plugin.remoteAllowed||!plugin.frontend||!plugin.remoteCapable):!result.installAllowed))button.disabled=true;actions.append(button);
         button.onclick = () => execute(async () => {
           if (action === 'open') return launch(plugin);
           if (action === 'uninstall' && !confirm(`卸载 ${plugin.name}？`)) return;

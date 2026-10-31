@@ -18,6 +18,7 @@ window.DBRemoteFiles = class {
     dialog.querySelector('header').hidden=true;
     this.floating=DevMuxPlugin.ui.dialog({title:'选择从机文件',content:dialog});
     this.layer=this.floating.element;
+    this.layer.classList.add('db-remote-picker');
     this.layer.addEventListener('close',()=>{if(this.resolve)this.finish(null);});
     DevMuxPlugin.onDispose(()=>this.finish(null));
     this.selected = new Set();
@@ -59,6 +60,15 @@ window.DBRemoteFiles = class {
     this.el('load').disabled = this.el('up').disabled = this.el('accept').disabled = true;
     this.el('message').textContent = '正在读取从机目录…';
     try {
+      // 面板配置可能仍在加载；空路径应先继承所选从机保存的工具目录。
+      if (!this.el('path').value.trim()) {
+        const config = await this.panel.call('config');
+        if (!this.resolve || generation !== this.generation) return;
+        if (!this.el('path').value.trim() && config.toolDir) {
+          this.el('path').value = config.toolDir;
+          if (!this.panel.directoryDirty) this.panel.el('directory').value = config.toolDir;
+        }
+      }
       const model = await this.panel.call('browse', {path: this.el('path').value});
       if (!this.resolve || generation !== this.generation) return;
       this.current = model;

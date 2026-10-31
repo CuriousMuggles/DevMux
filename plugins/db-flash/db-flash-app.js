@@ -18,8 +18,10 @@
     panel.el('pick').textContent = context.local ? '批量选择待烧写文件…' : '选择从机待烧写文件…';
     panel.updateControls();
     if (!context.ready || panel.running) return;
+    const target = context.target;
     try {
       const config = await panel.call('config');
+      if (context.target !== target) return;
       if (config.toolDir && !panel.directoryDirty) panel.el('directory').value = config.toolDir;
       if (config.job?.state === 'running') {
         panel.jobId = config.job.jobId; panel.sequence = 0; panel.requestId = '';

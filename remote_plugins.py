@@ -39,8 +39,12 @@ class RemotePlugins:
                 if args.get('sha256')!=digest:raise ValueError('插件界面已变化，请重新打开')
                 if type(offset) is not int or not 0<=offset<len(raw):raise ValueError('界面数据偏移无效')
                 return {'data':base64.b64encode(raw[offset:offset+32768]).decode()}
-            if not self.allowed:raise PermissionError('从机未允许主控安装插件，请在从机插件管理中开启')
+            if not self.allowed:raise PermissionError('从机未允许主控安装和卸载插件，请在从机插件管理中开启')
             if not isinstance(args,dict):raise ValueError('安装参数无效')
+            if action=='uninstall':
+                target={'id':args.get('id')}
+                self.manager.dispatch('disable',target)
+                return self.manager.dispatch('uninstall',target)
             digest=args.get('sha256','')
             if not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError('插件摘要无效')
             folder=self.root / hashlib.sha256(owner.encode()).hexdigest()[:32]
@@ -83,7 +87,8 @@ def invoke(controller,node_id,action,args):
         if not result.get('success'):raise RuntimeError(result.get('output','远程插件操作失败'))
         return result['data']
     if action=='list':return call('list',{})
-    if action!='install':raise PermissionError('仅支持查询或安装远程插件')
+    if action=='uninstall':return call('uninstall',{'id':args.get('id')})
+    if action!='install':raise PermissionError('仅支持查询、安装或卸载远程插件')
     package=base64.b64decode(args.get('package',''),validate=True)
     if not 0<len(package)<=4*1024*1024:raise ValueError('插件包大小无效')
     digest=hashlib.sha256(package).hexdigest();state=call('begin',{'sha256':digest,'size':len(package)})

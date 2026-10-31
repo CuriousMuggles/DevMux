@@ -28,6 +28,23 @@ class RemotePluginTests(unittest.TestCase):
             self.assertEqual(installed['id'],'example')
             self.assertEqual(invoke(None,'slave','install',args),installed)
             self.assertNotIn('example',self.manager.running)
+    def test_remote_uninstall_requires_permission_and_allows_reinstall(self):
+        def transport(controller,node,tool,action,args,**kw):
+            return self.registry.call(tool,action,args,remote=True,authorize=lambda:'verified-master')
+        args={'package':base64.b64encode(self.package).decode()}
+        with patch('remote_plugins.remote_call',side_effect=transport):
+            self.manager.remote.permission(True)
+            invoke(None,'slave','install',args)
+            self.manager.dispatch('enable',{'id':'example'})
+            self.manager.remote.permission(False)
+            with self.assertRaises(PermissionError):invoke(None,'slave','uninstall',{'id':'example'})
+            self.assertEqual(len(self.manager.store.list()),1)
+            self.manager.remote.permission(True)
+            invoke(None,'slave','uninstall',{'id':'example'})
+            self.assertEqual(self.manager.store.list(),[])
+            self.assertNotIn('example',self.manager.running)
+            self.assertEqual(invoke(None,'slave','install',args)['id'],'example')
+
     def test_revoke_during_upload_blocks_finish_and_wrong_hash_is_rejected(self):
         self.manager.remote.permission(True)
         digest=hashlib.sha256(self.package).hexdigest();args={'sha256':digest,'size':len(self.package)}
@@ -41,7 +58,7 @@ class RemotePluginTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.remote('finish',{'sha256':'0'*64})
         self.assertEqual(self.remote('finish',args)['id'],'example')
     def test_unverified_connection_cannot_discover_or_install(self):
-        for action in ('list','begin'):
+        for action in ('list','begin','uninstall'):
             with self.assertRaises(PermissionError):self.registry.call('__plugin_catalog__',action,{},remote=True,authorize=lambda:'')
     def test_combined_switch_enables_and_revokes_even_when_stopped(self):
         package=pack(Path(__file__).resolve().parents[1]/'plugins/usb-relay',self.root/'relay.dmp')

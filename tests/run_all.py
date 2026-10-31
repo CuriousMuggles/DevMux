@@ -48,6 +48,7 @@ TESTS = [
     ('DB Flash Simulation', 'tests.test_db_flash'),
     ('DB Flash p300-udp', 'tests.test_db_flash_p300'),
     ('DB Flash Real Process', 'tests.test_db_flash_real'),
+    ('DB Remote Picker UI', 'tests.test_db_remote_picker_ui'),
     ('DB Flash Remote', 'tests.test_db_flash_remote'),
     ('DB Flash WS', 'tests.test_db_flash_server'),
     ('USB Relay Local', 'tests.test_usb_relay'),

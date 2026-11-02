@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 # Test modules: (name, module_path)
 TESTS = [
+    ('eBPF Plugin', 'tests.test_ebpf_plugin'),
+    ('Plugin Device Permissions', 'tests.test_plugin_devices'),
     ('Plugin Development SDK', 'tests.test_plugin_dev'),
     ('Plugin SDK Browser', 'tests.test_plugin_sdk_ui'),
     ('Plugin Store', 'tests.test_plugin_store'),
@@ -29,6 +31,7 @@ TESTS = [
     ('Plugin UI', 'tests.test_plugin_ui'),
     ('Plugin Tool Frontends', 'tests.test_plugin_frontends'),
     ('Frozen Plugin Host', 'tests.test_plugin_frozen'),
+    ('Test Runner Credential Context', 'tests.test_runner_context'),
     ('Mijia Security', 'tests.test_mijia_service'),
     ('Extension Tool Selection', 'tests.test_extension_tool_selection'),
     ('Syntax Check',    'tests.test_syntax'),
@@ -113,13 +116,36 @@ TESTS = [
 ]
 
 
+class UserContextRequired(RuntimeError):
+    """A real credential environment is required; this is never a passing test."""
+
+
+def check_mijia_context():
+    import os
+    if os.name != 'nt':
+        raise UserContextRequired('米家 DPAPI 测试需要 Windows 当前用户环境')
+    from mijia_service import _dpapi
+    try:
+        sample = b'devmux-full-suite-context-probe'
+        if _dpapi(_dpapi(sample, True), False) != sample:
+            raise RuntimeError('DPAPI 往返数据不一致')
+    except RuntimeError as error:
+        raise UserContextRequired(
+            'DPAPI 预检失败，不能据此判定米家功能失败。请在获授权的沙箱外用户环境重跑 '
+            'python tests/run_all.py；不得修改用户凭据或跳过本组。原始错误：' + str(error)) from error
+
+
 def run_test(name: str, module: str) -> bool:
     try:
+        if module == 'tests.test_mijia_service':
+            check_mijia_context()
         mod = __import__(module, fromlist=['run'])
         if not hasattr(mod, 'run'):
             print(f'  [SKIP] {module} has no run()')
             return True
         return mod.run()
+    except UserContextRequired:
+        raise
     except Exception as e:
         print(f'  [FAIL] {name} crashed: {type(e).__name__}: {e}')
         return False
@@ -134,6 +160,7 @@ def main():
     passed = 0
     failed = 0
     skipped = 0
+    blocked = 0
     results = []
 
     for name, module in TESTS:
@@ -142,6 +169,13 @@ def main():
         try:
             ok = run_test(name, module)
             elapsed = time.time() - t0
+        except UserContextRequired as error:
+            elapsed = time.time() - t0
+            blocked += 1
+            results.append((name, 'ENV-BLOCKED', elapsed))
+            print(f'  -> ENV-BLOCKED: {error}')
+            print()
+            continue
         except KeyboardInterrupt:
             print('  [INTERRUPTED]')
             failed += 1
@@ -164,8 +198,8 @@ def main():
 
     # Summary
     print('=' * 56)
-    print(f'  Results:  {passed} passed,  {failed} failed,  {skipped} skipped')
-    print(f'  Total:    {passed + failed + skipped} tests  ({sum(r[2] for r in results):.1f}s)')
+    print(f'  Results:  {passed} passed,  {failed} failed,  {skipped} skipped,  {blocked} environment-blocked')
+    print(f'  Total:    {passed + failed + skipped + blocked} tests  ({sum(r[2] for r in results):.1f}s)')
     print('=' * 56)
 
     if failed > 0:
@@ -174,7 +208,7 @@ def main():
             if not ok:
                 print(f'  - {name}')
 
-    return failed == 0
+    return failed == 0 and blocked == 0
 
 
 if __name__ == '__main__':

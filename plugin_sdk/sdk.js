@@ -42,7 +42,7 @@
   // request preserves wire envelopes for existing service adapters. Prefer call/hostCall for new code.
   function request(type,payload={},timeout=30000) {
     if(type==='plugin')return wire({type:'devmux-plugin-call',action:payload.action,arguments:payload.arguments||{}},timeout);
-    if(!['pick-file','pick-directory','extension-tool'].includes(type))return Promise.resolve(failure(new PluginError('未提供该宿主接口','permission-denied')));
+    if(!['pick-file','pick-directory','extension-tool','device-adb'].includes(type))return Promise.resolve(failure(new PluginError('未提供该宿主接口','permission-denied')));
     return wire({type:'devmux-host-call',hostType:type,hostPayload:payload},timeout);
   }
   function unwrap(result){

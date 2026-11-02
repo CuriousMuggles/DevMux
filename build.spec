@@ -65,6 +65,7 @@ a = Analysis(
         (_os.path.join(_ADB_DIR, 'mke2fs.conf'), 'adb'),
     ],
     hiddenimports=[
+        'plugin_devices',
         'plugin_sdk',
         'mijiaAPI', 'qrcode.image.svg', 'Crypto.Cipher.ARC4', 'tzlocal',
         # pywebview internals

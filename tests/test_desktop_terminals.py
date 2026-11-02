@@ -25,6 +25,14 @@ class Window:
 
 
 class DesktopTests(unittest.IsolatedAsyncioTestCase):
+    def test_collector_deployment_limit_is_permission_scoped(self):
+        payload={'request':{'type':'devmux-host-call','hostType':'device-adb','hostPayload':{'operation':'deploy','data':'x'*600000}}}
+        record={'view':'plugin','plugin_permissions':['device-adb']}
+        self.assertGreater(DesktopTerminals.event_limit(record,payload),600000)
+        self.assertEqual(DesktopTerminals.event_limit({'view':'plugin'},payload),262144)
+        payload['request']['hostPayload']['operation']='exec'
+        self.assertEqual(DesktopTerminals.event_limit(record,payload),262144)
+
     async def asyncSetUp(self):
         self.messages=[]
         async def send(ws,msg):self.messages.append((ws,msg))

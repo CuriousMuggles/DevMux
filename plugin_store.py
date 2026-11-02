@@ -53,7 +53,7 @@ class PluginStore:
         if 'tool' in manifest and (not isinstance(manifest['tool'],str) or not ID.fullmatch(manifest['tool'])):
             raise ValueError('插件工具标识无效')
         permissions=manifest.get('permissions',[])
-        if not isinstance(permissions,list) or any(permission not in ('pick-file','pick-directory') for permission in permissions):
+        if not isinstance(permissions,list) or any(permission not in ('pick-file','pick-directory','device-adb') for permission in permissions):
             raise ValueError('插件 permissions 包含不支持的宿主权限')
         if 'window' in manifest:
             value=manifest['window']

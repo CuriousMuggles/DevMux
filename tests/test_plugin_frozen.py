@@ -25,7 +25,7 @@ def run():
         assert removed not in names, removed
     with tempfile.TemporaryDirectory() as temp:
         store=PluginStore(Path(temp)/'installed')
-        for identifier,action in [('usb-relay','config'),('db-flash','config'),('mijia','status'),('example','echo')]:
+        for identifier,action in [('usb-relay','config'),('db-flash','config'),('mijia','status'),('example','echo'),('ebpf','asset')]:
             package=pack(root/'plugins'/identifier,Path(temp)/(identifier+'.dmp'))
             manifest=store.install(package)
             if identifier=='mijia':

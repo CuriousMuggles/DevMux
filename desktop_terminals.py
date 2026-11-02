@@ -9,6 +9,18 @@ from urllib.parse import urlsplit
 
 
 class DesktopTerminals:
+    @staticmethod
+    def event_limit(record, payload):
+        request = payload.get('request', {}) if isinstance(payload, dict) else {}
+        args = request.get('hostPayload', {}) if isinstance(request, dict) else {}
+        if (record.get('view') == 'plugin' and
+                'device-adb' in record.get('plugin_permissions', []) and
+                request.get('type') == 'devmux-host-call' and
+                request.get('hostType') == 'device-adb' and
+                isinstance(args, dict) and args.get('operation') == 'deploy'):
+            return 6 * 1024 * 1024
+        return 262144
+
     def __init__(self, manager, port):
         self.manager, self._port = manager, port
         self.webview = None
@@ -192,6 +204,11 @@ class DesktopTerminals:
             elif request.get('type') == 'devmux-host-call':
                 kind=request.get('hostType')
                 arguments=request.get('hostPayload',{})
+                if kind == 'device-adb':
+                    from plugin_devices import dispatch
+                    result = await dispatch(self.manager, record, arguments)
+                    await reply(result)
+                    return
                 if kind not in ('pick-file','pick-directory','extension-tool'):raise PermissionError('插件不能调用该主程序接口')
                 if kind in ('pick-file','pick-directory') and kind not in record.get('plugin_permissions',['pick-file','pick-directory']):
                     raise PermissionError('插件清单未声明宿主权限: '+kind)
@@ -240,7 +257,7 @@ class DesktopTerminals:
                 if self.records.get(record['id']) is not record:break
                 if msg.get('type')=='desktop-terminal-event':
                     payload=msg.get('payload')
-                    if not isinstance(payload,dict) or len(json.dumps(payload))>262144:
+                    if not isinstance(payload,dict) or len(json.dumps(payload))>self.event_limit(record,payload):
                         raise ValueError('子窗输入消息无效')
                     if record.get('view') == 'plugin':
                         await self.plugin_request(record,ws,payload)

@@ -1,0 +1,15 @@
+{
+  "id": "ebpf",
+  "name": "Linux eBPF 调试",
+  "version": "0.0.1",
+  "apiVersion": 1,
+  "backend": "main.py",
+  "frontend": "index.html",
+  "permissions": [
+    "device-adb"
+  ],
+  "window": {
+    "width": 1400,
+    "height": 900
+  }
+}

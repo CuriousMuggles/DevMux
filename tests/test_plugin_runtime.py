@@ -1,4 +1,5 @@
 import base64
+import json
 from contextlib import ExitStack
 from pathlib import Path
 import tempfile
@@ -7,6 +8,66 @@ from plugin_manager import PluginManager
 from plugin_pack import pack
 
 class RuntimeTest(unittest.TestCase):
+    def test_restart_restores_enabled_but_preserves_disabled_and_uninstalled(self):
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as resources:
+            root = Path(temp) / 'installed'
+            package = pack(Path(__file__).resolve().parents[1] / 'plugins/example', Path(temp) / 'example.dmp')
+            manager = PluginManager(root)
+            resources.callback(manager.close)
+            manager.dispatch('install', {'package': base64.b64encode(package.read_bytes()).decode()})
+            manager.dispatch('enable', {'id': 'example'})
+            manager.close()
+            restored = PluginManager(root)
+            resources.callback(restored.close)
+            self.assertTrue(restored.dispatch('list', {})[0]['enabled'])
+            self.assertEqual(restored.dispatch('call', {'id': 'example', 'action': 'echo', 'arguments': {'text': 'after restart'}}), {'text': 'after restart'})
+            restored.dispatch('disable', {'id': 'example'})
+            restored.close()
+            disabled = PluginManager(root)
+            resources.callback(disabled.close)
+            self.assertFalse(disabled.dispatch('list', {})[0]['enabled'])
+            disabled.dispatch('uninstall', {'id': 'example'})
+            # A later reinstall must not inherit a stale enabled preference.
+            disabled.dispatch('install', {'package': base64.b64encode(package.read_bytes()).decode()})
+            disabled.close()
+            reinstalled = PluginManager(root)
+            resources.callback(reinstalled.close)
+            self.assertFalse(reinstalled.dispatch('list', {})[0]['enabled'])
+
+    def test_corrupt_saved_state_does_not_prevent_startup(self):
+        for contents in ('{broken', '{"example": true}', '[null, 42, "../outside"]'):
+            with self.subTest(contents=contents), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / '.data').mkdir()
+                (root / '.data/enabled.json').write_text(contents, encoding='utf-8')
+                manager = PluginManager(root)
+                try:
+                    self.assertEqual(manager.running, {})
+                finally:
+                    manager.close()
+
+    def test_failed_restore_does_not_block_other_plugins_or_forget_intent(self):
+        from plugin_store import PluginStore
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as resources:
+            root = Path(temp) / 'installed'
+            package = pack(Path(__file__).resolve().parents[1] / 'plugins/example', Path(temp) / 'example.dmp')
+            PluginStore(root).install(package)
+            broken = root / 'broken'
+            broken.mkdir()
+            manifest = json.loads((root / 'example/manifest.json').read_text(encoding='utf-8'))
+            manifest['id'] = 'broken'
+            (broken / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+            (broken / 'main.py').write_text("raise RuntimeError('test startup failure')", encoding='utf-8')
+            state = root / '.data/enabled.json'
+            state.parent.mkdir()
+            state.write_text(json.dumps(['broken', 'example']), encoding='utf-8')
+            with self.assertLogs('plugin_manager', level='ERROR'):
+                manager = PluginManager(root)
+            resources.callback(manager.close)
+            self.assertNotIn('broken', manager.running)
+            self.assertIn('example', manager.running)
+            self.assertEqual(set(json.loads(state.read_text(encoding='utf-8'))), {'broken', 'example'})
+
     def test_lifecycle_and_window_resource(self):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as resources:
             package = pack(Path(__file__).resolve().parents[1] / 'plugins/example', Path(temp) / 'example.dmp')

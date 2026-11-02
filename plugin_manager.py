@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import threading
+import logging
 from plugin_store import PluginStore, ID
 from plugin_process import PluginProcess
 
@@ -14,6 +15,23 @@ class PluginManager:
         self.lock = threading.RLock()
         from remote_plugins import RemotePlugins
         self.remote = RemotePlugins(self)
+        self.state_path = self.store.root / '.data' / 'enabled.json'
+        try:
+            saved = json.loads(self.state_path.read_text(encoding='utf-8'))
+            self.enabled = {value for value in saved if isinstance(value, str) and ID.fullmatch(value)} if isinstance(saved, list) else set()
+        except (OSError, ValueError):
+            self.enabled = set()
+        for identifier in sorted(self.enabled.copy()):
+            try:
+                self.dispatch('enable', {'id': identifier})
+            except Exception:
+                logging.getLogger(__name__).exception('恢复插件失败: %s', identifier)
+
+    def _save_enabled(self):
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.state_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(sorted(self.enabled)), encoding='utf-8')
+        temporary.replace(self.state_path)
 
     def remote_catalog(self):
         """Only expose identity and running state, never local paths or credentials."""
@@ -87,6 +105,8 @@ class PluginManager:
                             self.running.pop(identifier).close()
                             raise ValueError('工具标识与现有服务冲突')
                         self.extension_tools.services[tool] = PluginService(process, manifest, self.lock)
+                self.enabled.add(identifier)
+                self._save_enabled()
                 return {}
             if action == 'disable':
                 process = self.running.get(identifier)
@@ -101,11 +121,15 @@ class PluginManager:
                         self.extension_tools.services.pop(tool, None)
                 if process:
                     process.close()
+                self.enabled.discard(identifier)
+                self._save_enabled()
                 return {}
             if action == 'uninstall':
                 if identifier in self.running:
                     raise ValueError('请先停用插件再卸载')
                 self.store.uninstall(identifier)
+                self.enabled.discard(identifier)
+                self._save_enabled()
                 return {}
             if action == 'call':
                 if identifier not in self.running:

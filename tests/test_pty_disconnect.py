@@ -82,7 +82,9 @@ def run():
         with tempfile.TemporaryDirectory() as temporary, \
              patch.object(sys, 'frozen', True, create=True), \
              patch.object(sys, 'executable', str(Path(temporary) / 'DevMux.exe')):
-            assert server._crash_dump_path() == str(Path(temporary) / 'crash_dump.txt')
+            assert server._crash_dump_path() == str(Path(temporary) / 'devmux-data' / 'crash_dump.txt')
+            assert (Path(temporary) / 'devmux-data').is_dir()
+            assert not (Path(temporary) / 'crash_dump.txt').exists()
         print('  [PASS] 断线 PTY 不写入，按保存句柄清理子进程并回收读取线程，退出仅通知一次，冻结版崩溃记录持久化')
         return True
     except Exception:

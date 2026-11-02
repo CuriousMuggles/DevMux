@@ -11,7 +11,7 @@ from plugin_store import PluginStore
 
 def run():
     root=Path(__file__).resolve().parents[1]
-    binary=Path(os.environ.get('DEVMUX_TEST_EXE',str(root/'dist/plugin-release/DevMux.exe')))
+    binary=Path(os.environ.get('DEVMUX_TEST_EXE',str(root/'dist/DevMux.exe')))
     if not binary.is_file():
         raise AssertionError(f'请先构建 {binary}')
     from PyInstaller.archive.readers import CArchiveReader

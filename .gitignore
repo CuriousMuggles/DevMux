@@ -52,3 +52,6 @@ DEVELOPMENT_LOG.html
 SELF_TEST_LOG.md
 docs/管理文档/
 docs/报告/
+
+devmux-data/
+.worktrees/

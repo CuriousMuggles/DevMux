@@ -2,7 +2,7 @@
   "id": "mijia",
   "name": "米家设备",
   "description": "扫码登录、设备状态与开关控制",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 1,
   "backend": "main.py",
   "frontend": "index.html",
@@ -12,5 +12,10 @@
   },
   "timeout": 180,
   "permissions": [],
-  "localActions": ["status", "snapshot", "read-switch", "set-switch"]
+  "localActions": [
+    "status",
+    "snapshot",
+    "read-switch",
+    "set-switch"
+  ]
 }

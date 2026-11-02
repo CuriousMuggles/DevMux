@@ -11,6 +11,14 @@ from mijia_service import MijiaService, _dpapi
 
 
 class MijiaSecurityTests(unittest.TestCase):
+    def test_windows_locale_uses_protocol_codes(self):
+        with tempfile.TemporaryDirectory() as root, mock.patch('locale.getlocale', return_value=('Chinese (Simplified)_China', 'cp936')):
+            api = MijiaService(root)._api()
+            self.assertEqual(api.locale, 'zh_CN')
+            self.assertIn('_locale=zh_CN', api.service_login_url)
+            self.assertNotIn('China', api.user_agent)
+            self.assertIn('-CN-', api.user_agent)
+
     def test_dpapi_roundtrip_and_ciphertext(self):
         plain = b'mijia-test-sensitive-token'
         encrypted = _dpapi(plain, True)
@@ -73,6 +81,10 @@ class MijiaSecurityTests(unittest.TestCase):
         self.assertIsNone(service.qr)
         api._save_auth_data.assert_called_once()
         self.assertEqual(api.auth_data['serviceToken'], 'secret')
+        self.assertEqual(session.get.call_count, 3)
+        self.assertTrue(session.get.call_args_list[0].args[0].startswith(api.login_url + '?'))
+        self.assertEqual(session.get.call_args_list[1].args[0], 'https://example.invalid/poll')
+        self.assertEqual(session.get.call_args_list[2].args[0], 'https://example.invalid/callback')
 
     def test_switch_checks_capability_and_reads_back(self):
         service = MijiaService()

@@ -87,6 +87,12 @@ class MijiaService:
         device_module.requests = BoundedSpecRequests
         service = self
         class ProtectedAPI(mijiaAPI):
+            def __init__(self, auth_data_path):
+                super().__init__(auth_data_path)
+                # Windows 的区域名称不是小米协议及 UA 所需的语言/地区代码。
+                self.locale = 'zh_CN'
+                self.service_login_url = 'https://account.xiaomi.com/pass/serviceLogin?_json=true&sid=mijia&_locale=zh_CN'
+
             def _init_session(self):
                 super()._init_session()
                 request = self.session.request
@@ -129,6 +135,8 @@ class MijiaService:
         api = ProtectedAPI(str(self.root / ('unused-' + secrets.token_hex(16))))
         if self.path.exists():
             api.auth_data = json.loads(_dpapi(self.path.read_bytes(), False))
+            # 重新生成可能包含旧 Windows 区域名称的客户端标识。
+            api.auth_data.pop('ua', None)
             api._init_session()
         if not fresh:
             self.api = api
@@ -159,14 +167,14 @@ class MijiaService:
                 return
             location.update({'theme':'', 'bizDeviceType':'', '_hasLogo':'false', '_qrsize':'240', '_dc':str(int(time.time()*1000))})
             headers = {'User-Agent':api.user_agent, 'Accept-Encoding':'gzip', 'Content-Type':'application/x-www-form-urlencoded', 'Connection':'keep-alive'}
-            response = requests.get(api.login_url + '?' + parse.urlencode(location), headers=headers, timeout=15)
+            session = requests.Session()
+            response = session.get(api.login_url + '?' + parse.urlencode(location), headers=headers, timeout=15)
             data = api._handle_ret(response)
             qr = qrcode.make(data['loginUrl'], image_factory=qrcode.image.svg.SvgPathImage)
             output = io.BytesIO(); qr.save(output)
             with self.lock:
                 if generation != self.generation: return
                 self.qr = base64.b64encode(output.getvalue()).decode('ascii')
-            session = requests.Session()
             reply = api._handle_ret(session.get(data['lp'], headers=headers, timeout=120))
             with self.lock:
                 if generation != self.generation: return

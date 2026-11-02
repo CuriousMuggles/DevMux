@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 # Test modules: (name, module_path)
 TESTS = [
+    ('Application Data and Official Packages', 'tests.test_app_paths'),
     ('eBPF Plugin', 'tests.test_ebpf_plugin'),
     ('Plugin Device Permissions', 'tests.test_plugin_devices'),
     ('Plugin Development SDK', 'tests.test_plugin_dev'),

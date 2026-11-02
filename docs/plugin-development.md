@@ -130,3 +130,8 @@ python plugin_pack.py plugins/example dist/example.dmp
 清单可以声明 `window.width`、`window.height` 以及 `description`。`tool` 和 `actions` 用于声明远程/Agent 接口；对应插件须实现 config、permission 和 __owned__ 动作。插件存在后台任务时应实现 can_stop() 并返回 False，底座将拒绝停用。清单 `timeout` 可将本地调用上限配置为 1–180 秒。
 
 插件 HTML 只应提供工具内容，不要再创建自己的浮动窗口外壳、拖动标题栏或缩放边框。系统窗口由底座统一管理，关闭视图不会停用插件或结束后台任务。浏览器运行时使用独立弹出页面，需要允许弹出窗口。
+
+
+## 官方插件发布规范
+
+执行 `python release_plugins.py dist`，将全部官方插件（USB 继电器、DB、米家、eBPF）生成到 `dist/plugin/插件ID-版本号.dmp`。正式与调试构建均自动调用此步骤。插件启停选择会持久化并在应用重启时恢复；插件数据与运行日志位于 EXE 旁 `devmux-data/plugins-*/.data/`，发布包不得包含运行数据。

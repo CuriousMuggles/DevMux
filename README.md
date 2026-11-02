@@ -72,12 +72,14 @@ DevMux 自有代码以 [GPL-3.0-or-later](LICENSE) 授权。第三方组件使�
 ### 构建官方插件
 
 ```powershell
-python plugin_pack.py plugins/usb-relay dist/usb-relay.dmp
-python plugin_pack.py plugins/db-flash dist/db-flash.dmp
-python plugin_pack.py plugins/mijia dist/mijia.dmp
+python release_plugins.py dist
 ```
 
-插件界面保留原工具的工作流程。停用或卸载前须先结束活动任务；更新时先停用，再安装新包。基础程序不预装上述三个插件。开发接口见 [插件开发说明](docs/plugin-development.md)。
+正式版和调试版构建会自动将全部官方插件（USB 继电器、DB、米家、eBPF）打包到 `dist/plugin/`，文件名为 `插件ID-版本号.dmp`。
+
+插件启用或停用状态会在重启后恢复。运行配置、已安装插件及其凭据、日志和任务数据统一位于 `DevMux.exe` 同目录的 `devmux-data/`；升级首次启动时迁移旧位置的数据，已有目标文件优先保留。显式设置的 `RELAY_CONFIG` 和 `ADB_AGENT_RUNTIME_DIR` 继续生效。
+
+插件界面保留原工具的工作流程。停用或卸载前须先结束活动任务；更新时先停用，再安装新包。基础程序不预装上述官方插件。开发接口见 [插件开发说明](docs/plugin-development.md)。
 
 插件管理支持选择已验证的从机并批量传送安装包。从机需在本地开启“允许已验证主控远程安装插件”；安装不会自动启用或授权。需要远程操作时，在从机插件卡片开启“允许主控使用（自动启用）”。工具菜单始终保留本机已启用的工具，并按从机分组展示其已安装的远程工具；管理对象切换不影响本机入口。未启用或未授权时提示在从机开启。从机独有插件可按需加载界面并缓存，无需在主机安装后端；远程窗口标明电脑名称，操作固定到对应从机。米家仍仅支持本机使用。
 

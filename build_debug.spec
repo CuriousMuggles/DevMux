@@ -16,16 +16,8 @@ import winpty
 from app_version import windows_version_resource
 _WINPTY_DIR = _os.path.dirname(winpty.__file__)
 
-# 调试包同样不携带运行日志；commands.json 不打包，也不删除用户配置。
-_RELEASE_DIR = Path(DISTPATH)
-for _runtime_name in ('devmux.log', 'adb-manager.log', 'crash_dump.txt'):
-    _runtime_file = _RELEASE_DIR / _runtime_name
-    try:
-        _runtime_file.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError as _cleanup_error:
-        raise RuntimeError(f'无法清理发布残留文件: {_runtime_file}') from _cleanup_error
+# 运行数据（devmux.log、adb-manager.log、crash_dump.txt、commands.json、diagnostics）
+# 统一位于 devmux-data，不属于发布包；构建不得清理用户已有运行数据。
 
 # 将 Android platform-tools 一并打入单文件程序，目标电脑无需另装 adb。
 _ADB_DIR = _os.environ.get('ADB_BUNDLE_DIR') or _os.path.dirname(shutil.which('adb') or '')
@@ -121,3 +113,7 @@ exe = EXE(
     entitlements_file=None,
     icon=None,
 )
+
+# Official packages are released separately beside the executable.
+from release_plugins import build_official_plugins
+build_official_plugins(DISTPATH)

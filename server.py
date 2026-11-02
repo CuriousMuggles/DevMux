@@ -633,8 +633,8 @@ class ManagerServer:
         self._agent_token = secrets.token_urlsafe(32)
         self._agent_instance = secrets.token_hex(16)
         self._agent_runtime = None
-        import hashlib
-        storage_id = hashlib.sha256(os.path.abspath(self.relay.config_path).encode('utf-8')).hexdigest()[:16]
+        from app_paths import storage_identity
+        storage_id = storage_identity(self.relay.config_path)
         self.windows = WindowsService(Path(self.relay.config_path).parent / ('windows-jobs-'+storage_id))
         from extension_tools import ExtensionTools
         from serial_terminal import SerialService
@@ -1756,10 +1756,8 @@ class ManagerServer:
 
     @staticmethod
     def _default_relay_config_path():
-        # 与 commands.json 同规则：冻结版写到 exe 同目录，源码运行写到项目目录。
-        if getattr(sys, 'frozen', False):
-            return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), 'relay.json')
-        return os.path.join(_exe_dir(), 'relay.json')
+        from app_paths import data_directory
+        return str(data_directory() / 'relay.json')
 
     @classmethod
     def _relay_config_path(cls):
@@ -1783,11 +1781,8 @@ class ManagerServer:
 
     @staticmethod
     def _commands_path():
-        # 冻结版 exe 中 _exe_dir() 指向 _MEIPASS 临时目录（重启即清空），
-        # 快捷指令必须持久化到 exe 所在目录（与 adb_worker.LOG_FILE 一致）。
-        if getattr(sys, 'frozen', False):
-            return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), 'commands.json')
-        return os.path.join(_exe_dir(), 'commands.json')
+        from app_paths import data_directory
+        return str(data_directory() / 'commands.json')
 
     @staticmethod
     def _command_store_path():
@@ -2648,9 +2643,8 @@ class ManagerServer:
 # Entry point
 # ---------------------------------------------------------------------------
 def _crash_dump_path():
-    """冻结版崩溃记录持久保存在 exe 旁，不能写入退出后消失的 _MEIPASS。"""
-    return os.path.join(os.path.dirname(os.path.abspath(
-        sys.executable if getattr(sys, 'frozen', False) else __file__)), 'crash_dump.txt')
+    from app_paths import data_directory
+    return str(data_directory() / 'crash_dump.txt')
 
 
 _native_crash_file = None

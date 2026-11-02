@@ -43,7 +43,8 @@ ADB_PATH = _resolve_adb_path()
 POLL_INTERVAL = 2.0       # seconds
 CONFIRM_COUNT = 3         # debounce offline count
 POLL_STOP_JOIN_TIMEOUT = 3.0
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__)), 'devmux.log')
+from app_paths import data_directory
+LOG_FILE = str(data_directory() / 'devmux.log')
 DIAGNOSTIC_LOG_FILE = None
 LOG_FILE_LOCK = threading.RLock()
 

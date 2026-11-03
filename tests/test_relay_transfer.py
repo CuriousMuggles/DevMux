@@ -12,8 +12,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import relay_transfer as transfer
-import relay_node
+from relay import relay_transfer as transfer
+from relay import relay_node
+from relay import relay_adb
 import server
 from tests.test_relay_app import _Harness, _fake_list_devices, _fake_execute, _wait_until
 
@@ -35,7 +36,7 @@ def run(cross_deployment=False):
             calls = []
 
             def adb(argv, **kwargs):
-                assert kwargs['creationflags'] == relay_node.CREATE_NO_WINDOW
+                assert kwargs['creationflags'] == relay_adb.CREATE_NO_WINDOW
                 assert argv[:3] == ['node-b', '-t', '1'], argv
                 calls.append(argv[3:])
                 args = argv[3:]
@@ -69,7 +70,7 @@ def run(cross_deployment=False):
                     return SimpleNamespace(returncode=0,stdout=raw,stderr=b'')
                 return SimpleNamespace(returncode=0, stdout='ok', stderr='')
 
-            with patch.object(relay_node, 'list_devices', _fake_list_devices), patch.object(relay_node, 'execute', _fake_execute):
+            with patch.object(relay_adb, 'list_devices', _fake_list_devices), patch.object(relay_adb, 'execute', _fake_execute):
                 harness = _Harness(str(base / 'instances'), master_local_devices_enabled=False)
                 if cross_deployment:
                     raise ValueError('不同有效根之间不允许传输')
@@ -82,7 +83,7 @@ def run(cross_deployment=False):
                     manager = object.__new__(server.ManagerServer)
                     manager.relay = harness.master
                     manager._executor = None
-                    with patch.object(relay_node.subprocess, 'run', adb):
+                    with patch.object(relay_adb.subprocess, 'run', adb):
                         rejected = asyncio.run(manager._exec_adb(argv=['push', str(script), '/sdcard/'], key=key))
                         assert not rejected['success'] and '白名单' in rejected['output'], rejected
                         assert not calls

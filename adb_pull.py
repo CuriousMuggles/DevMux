@@ -4,7 +4,7 @@ import posixpath
 import re
 import shlex
 from pathlib import Path, PurePosixPath
-import relay_transfer
+from relay import relay_transfer
 
 LIST_LIMIT = 16 * 1024 * 1024
 

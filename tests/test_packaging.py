@@ -22,6 +22,16 @@ def run() -> bool:
                          'devmux.log', 'adb-manager.log', 'DevMux', 'commands.json', 'crash_dump.txt', 'diagnostics'):
             checks.append((f'{spec_name} 包含 {required}', _contains(spec, required)))
 
+    # db_download_host 有两份：根目录版打进冻结包，插件目录版供 db-flash 运行时调用。
+    # 两份必须逐字节一致，否则同一次下载在两个入口会走出不同行为。
+    bundled = ROOT / 'db_download_host.py'
+    plugin_copy = ROOT / 'plugins' / 'db-flash' / 'db_download_host.py'
+    checks.append(('db_download_host 两份副本均存在',
+                   bundled.is_file() and plugin_copy.is_file()))
+    checks.append(('db_download_host 两份副本内容一致',
+                   bundled.is_file() and plugin_copy.is_file()
+                   and bundled.read_bytes() == plugin_copy.read_bytes()))
+
     for name, passed in checks:
         print(f"  [{'PASS' if passed else 'FAIL'}] {name}")
         ok = ok and passed

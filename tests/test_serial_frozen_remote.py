@@ -15,7 +15,7 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT))
 import agent_client
-import relay_app
+from relay import relay_app
 from tests.test_serial_ui import exclusive_port
 from websockets.sync.client import connect
 

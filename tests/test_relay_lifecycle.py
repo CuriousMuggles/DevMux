@@ -11,8 +11,8 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
-import relay_app
-import relay_session
+from relay import relay_app
+from relay import relay_session
 from tests.test_relay_app import FakeBackend, _Harness, _patch, _fake_list_devices, _fake_execute, _wait_until
 
 

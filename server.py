@@ -13,10 +13,10 @@ import atexit
 import base64
 import uuid
 import concurrent.futures
-import ctypes
 from collections import deque
 import json
 import os
+import random
 import re
 import shlex
 import sys
@@ -51,7 +51,7 @@ import subprocess
 import shutil
 import tempfile
 from app_version import APP_VERSION, APP_TITLE
-from ctypes import wintypes
+from native_dialogs import _FileDialog
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional, Set
 
@@ -60,9 +60,9 @@ from websockets import ServerConnection as WebSocketServerProtocol
 
 import adb_worker
 from adb_worker import ADBWorker, ADB_PATH, get_all_devices, log, make_key
-from diagnostics import ADBDiagnosticRunner
-from relay_app import RelayController, default_session_id
-import relay_app
+from adb_service import AdbServiceMixin
+from relay.relay_app import RelayController
+from relay import relay_app
 from shared_terminal import SharedTerminalBackend
 from agent_api import AgentAPI
 from windows_executor import WindowsService
@@ -198,7 +198,6 @@ class CustomHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        import random
         cb = str(random.randint(100000, 999999))
         if self.path.startswith('/?_t=') or self.path == '/' or self.path == '/index.html' or self.path.split('?',1)[0] in ('/desktop-terminal.html', '/desktop-plugin.html'):
             # Serve index.html with actual WebSocket port injected
@@ -209,7 +208,9 @@ class CustomHandler(SimpleHTTPRequestHandler):
                     html = f.read()
                 html = html.replace('__WS_PORT__', str(_WS_PORT))
                 html = html.replace('__APP_VERSION__', APP_VERSION)
-                html = html.replace('v=52', f'v={cb}')
+                # 按值匹配会漏掉版本号不同的资源（app.js 与 style.css 就不是同一个号），
+                # 这里对所有 ?...v=<数字> 统一替换，避免新增资源忘了改常量。
+                html = re.sub(r'(\?[^"\']*?\bv=)\d+', lambda m: f'{m.group(1)}{cb}', html)
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.end_headers()
@@ -271,309 +272,12 @@ def start_http_server():
     return server
 
 
-# ---------------------------------------------------------------------------
-# Native Windows file/directory dialogs via COM IFileOpenDialog (ctypes)
-# ---------------------------------------------------------------------------
-class _FileDialog:
-    """原生 Windows 文件对话框。
-
-    通过 ctypes 直接调用 COM IFileOpenDialog，不依赖 tkinter 子进程。
-    IFileDialog::Show 自带模态消息泵，可从任意工作线程调用 —— 因此
-    源码运行与冻结版 exe 均可用（冻结版无法再启动 python 子进程）。
-    """
-
-    _SIGDN_FILESYSPATH = 0x80058000
-    _FOS_PICKFOLDERS = 0x00000020
-    _FOS_FORCEFILESYSTEM = 0x00000040
-    _FOS_ALLOWMULTISELECT = 0x00000200
-    _CLSCTX_INPROC_SERVER = 0x1
-    _COINIT_APARTMENTTHREADED = 0x2
-    _CANCELED = 0x800704C7  # HRESULT_FROM_WIN32(ERROR_CANCELLED)
-
-    class _GUID(ctypes.Structure):
-        _fields_ = [
-            ('Data1', wintypes.DWORD),
-            ('Data2', wintypes.WORD),
-            ('Data3', wintypes.WORD),
-            ('Data4', ctypes.c_ubyte * 8),
-        ]
-
-    class _I(ctypes.Structure):
-        _fields_ = [('lpVtbl', ctypes.POINTER(ctypes.c_void_p))]
-
-    CLSID_FileOpenDialog = _GUID(0xDC1C5A9C, 0xE88A, 0x4DDE, (0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7))
-    CLSID_FileSaveDialog = _GUID(0x84BCCD23, 0x5FDE, 0x4CDB, (0xAE, 0xA4, 0xAF, 0x64, 0xB8, 0x3D, 0x78, 0xAB))
-    # 注意：FileOpenDialog 类对象对 IFileOpenDialog 的 QueryInterface 会失败，
-    # 需用父接口 IFileDialog（含 Show/SetOptions/SetFolder/SetTitle/GetResult）。
-    IID_IFileDialog = _GUID(0x42F85136, 0xDB7E, 0x439C, (0x85, 0xF1, 0xE4, 0x07, 0x5D, 0x13, 0x5F, 0xC8))
-    IID_IFileOpenDialog = _GUID(0xD57C7288, 0xD4AD, 0x4768, (0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60))
-    IID_IShellItem = _GUID(0x43826D1E, 0xE718, 0x42EE, (0xBC, 0x55, 0xA1, 0xE2, 0x61, 0xC3, 0x7B, 0xFE))
-
-    # 记住上次打开的目录，作为下次 initialdir
-    _last_dir: str = ''
-
-    @staticmethod
-    def _fn(iface, idx, restype, *argtypes):
-        """取 vtable 中第 idx 个方法（首参固定为 this 指针）。"""
-        return ctypes.cast(iface.lpVtbl[idx], ctypes.CFUNCTYPE(restype, ctypes.c_void_p, *argtypes))
-
-    @staticmethod
-    def _release(iface):
-        try:
-            _FileDialog._fn(iface, 2, ctypes.c_ulong)(ctypes.addressof(iface))
-        except Exception:
-            pass
-
-    @staticmethod
-    def _free_str(p):
-        try:
-            ctypes.OleDLL('ole32').CoTaskMemFree(ctypes.cast(p, ctypes.c_void_p))
-        except Exception:
-            pass
-
-    @staticmethod
-    def pick(op: str, multi: bool = False, title: str | None = None, default_name: str = '') -> dict:
-        """op: 'file'、'directory' 或 'save'。文件选择可返回多条路径。"""
-        # 环境变量可强制走 PowerShell 兜底（部分机器 COM 对话框渲染异常时用）
-        if os.environ.get('ADB_DIALOG_PS') == '1':
-            log('PICK', 'ADB_DIALOG_PS=1, using PowerShell dialog')
-            return _FileDialog._ps_pick(op, multi, title, default_name)
-        result = _FileDialog._com_pick(op, multi, title, default_name)
-        if result.get('success') or result.get('path'):
-            return result
-        # COM 失败（返回带 'output' 键的错误结果）→ PowerShell 兜底；
-        # 用户取消返回 {success:False, path:''} 无 'output'，直接返回。
-        if 'output' in result:
-            log('PICK', 'COM dialog failed, falling back to PowerShell')
-            return _FileDialog._ps_pick(op, multi, title, default_name)
-        return result
-
-    @staticmethod
-    def _ps_pick(op: str, multi: bool = False, title: str | None = None, default_name: str = '') -> dict:
-        """PowerShell WinForms 对话框兜底（跨 Windows 版本最稳）。"""
-        init = (_FileDialog._last_dir or '').replace("'", "''")
-        enc = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
-        if op == 'directory':
-            dialog_title = (title or '选择本地保存目录').replace("'", "''")
-            script = (
-                enc +
-                "Add-Type -AssemblyName System.Windows.Forms; "
-                "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-                f"$d.Description = '{dialog_title}'; "
-                "$d.ShowNewFolderButton = $true; "
-                f"$d.SelectedPath = '{init}'; "
-                "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath }"
-            )
-        elif op == 'save':
-            dialog_title = (title or '选择或新建终端记录文件').replace("'", "''")
-            name = default_name.replace("'", "''")
-            script = (
-                enc +
-                "Add-Type -AssemblyName System.Windows.Forms; "
-                "$d = New-Object System.Windows.Forms.SaveFileDialog; "
-                f"$d.Title = '{dialog_title}'; "
-                f"$d.FileName = '{name}'; "
-                "$d.Filter = '日志文件 (*.log)|*.log|所有文件 (*.*)|*.*'; "
-                "$d.OverwritePrompt = $false; "
-                f"$d.InitialDirectory = '{init}'; "
-                "$r = $d.ShowDialog(); "
-                "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileName }"
-            )
-        else:
-            script = (
-                enc +
-                "Add-Type -AssemblyName System.Windows.Forms; "
-                "$d = New-Object System.Windows.Forms.OpenFileDialog; "
-                f"$d.Title = '{(title or ('选择要上传的文件（可多选）' if multi else '选择要上传的文件')).replace(chr(39), chr(39) * 2)}'; "
-                f"$d.Multiselect = ${str(multi).lower()}; "
-                f"$d.InitialDirectory = '{init}'; "
-                "$r = $d.ShowDialog(); "
-                "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames }"
-            )
-        try:
-            proc = subprocess.run(
-                ['powershell', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
-                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120,
-                creationflags=CREATE_NO_WINDOW,
-            )
-            paths = [line.strip() for line in (proc.stdout or '').splitlines() if line.strip()]
-            if paths:
-                _FileDialog._last_dir = os.path.dirname(paths[0])
-                return {'success': True, 'path': paths[0], 'paths': paths}
-            if proc.returncode != 0 and proc.stderr:
-                return {'success': False, 'path': '', 'output': proc.stderr.strip()}
-            return {'success': False, 'path': ''}
-        except Exception as e:
-            log('PICK', f'PowerShell dialog error: {type(e).__name__}: {e}')
-            return {'success': False, 'path': '', 'output': str(e)}
-
-    @staticmethod
-    def _com_pick(op: str, multi: bool = False, title: str | None = None, default_name: str = '') -> dict:
-        """op: 'file'、'directory' 或 'save'。阻塞直到对话框关闭（COM IFileDialog）。"""
-        ole32 = ctypes.OleDLL('ole32')
-        shell32 = ctypes.OleDLL('shell32')
-        ole32.CoInitializeEx.restype = ctypes.c_long
-        ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-        ole32.CoCreateInstance.restype = ctypes.c_long
-        ole32.CoCreateInstance.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p]
-        shell32.SHCreateItemFromParsingName.restype = ctypes.c_long
-        shell32.SHCreateItemFromParsingName.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-
-        self = _FileDialog
-        coinit = ole32.CoInitializeEx(None, self._COINIT_APARTMENTTHREADED)
-        if coinit not in (0, 1):
-            return {'success': False, 'path': '', 'output': f'COM 初始化失败: {coinit:#x}'}
-
-        try:
-            # --- 创建 IFileOpenDialog 或 IFileSaveDialog（均用父接口 IFileDialog 查询） ---
-            pdlg = ctypes.POINTER(self._I)()
-            clsid = self.CLSID_FileSaveDialog if op == 'save' else self.CLSID_FileOpenDialog
-            hr = ole32.CoCreateInstance(
-                ctypes.byref(clsid), None, self._CLSCTX_INPROC_SERVER,
-                ctypes.byref(self.IID_IFileDialog), ctypes.byref(pdlg),
-            )
-            if hr < 0 or not pdlg:
-                return {'success': False, 'path': '', 'output': f'创建对话框失败: {ctypes.c_long(hr).value:#x}'}
-            dlg = pdlg.contents
-
-            # --- 选项 ---
-            opts = self._FOS_FORCEFILESYSTEM
-            if op == 'directory':
-                opts |= self._FOS_PICKFOLDERS
-            elif multi:
-                opts |= self._FOS_ALLOWMULTISELECT
-            self._fn(dlg, 9, ctypes.c_long, ctypes.c_ulong)(ctypes.addressof(dlg), opts)
-
-            if op == 'save' and default_name:
-                self._fn(dlg, 15, ctypes.c_long, ctypes.c_wchar_p)(
-                    ctypes.addressof(dlg), default_name
-                )
-
-            # --- 标题 ---
-            dialog_title = title or ('选择本地保存目录' if op == 'directory' else ('选择要上传的文件（可多选）' if multi else '选择要上传的文件'))
-            self._fn(dlg, 17, ctypes.c_long, ctypes.c_wchar_p)(ctypes.addressof(dlg), dialog_title)
-
-            # --- 初始目录（记住上次位置，需存在才设置） ---
-            if self._last_dir and os.path.isdir(self._last_dir):
-                pitem = ctypes.POINTER(self._I)()
-                h = shell32.SHCreateItemFromParsingName(
-                    self._last_dir, None, ctypes.byref(self.IID_IShellItem), ctypes.byref(pitem)
-                )
-                if h >= 0 and pitem:
-                    self._fn(dlg, 12, ctypes.c_long, ctypes.POINTER(self._I))(
-                        ctypes.addressof(dlg), pitem
-                    )
-                    self._release(pitem.contents)
-
-            # --- 显示（模态） ---
-            # 对话框在 asyncio 的工作线程中创建。未指定 owner 时，Windows 会把
-            # 它作为无主窗口放到后台，用户看起来就像点击无反应。绑定当前前台
-            # 的 pywebview 窗口，保证对话框置顶并正确保持模态关系。
-            owner = None
-            try:
-                user32 = ctypes.WinDLL('user32', use_last_error=True)
-                user32.FindWindowW.restype = wintypes.HWND
-                user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
-                user32.GetForegroundWindow.restype = wintypes.HWND
-                # Show 在 executor 线程中运行时，GetForegroundWindow 有时会返回
-                # 空句柄；pywebview 的顶层窗口标题固定为 DevMux，所以先按
-                # 标题查找，找不到再退回当前前台窗口。
-                owner = user32.FindWindowW(None, APP_TITLE) or user32.GetForegroundWindow()
-            except Exception as e:
-                log('PICK', f'cannot get dialog owner: {e}')
-            log('PICK', f'opening {op} dialog (owner={owner!r})')
-            hr = self._fn(dlg, 3, ctypes.c_long, wintypes.HWND)(ctypes.addressof(dlg), owner)
-            if ctypes.c_ulong(hr & 0xFFFFFFFF).value == self._CANCELED or hr < 0:
-                return {'success': False, 'path': ''}
-
-            # --- 取结果 ---
-            paths = []
-            if multi and op == 'file':
-                # GetResults 是 IFileOpenDialog 的扩展方法，不能通过父接口
-                # IFileDialog 的 vtable 调用；先显式 QueryInterface 再读取数组。
-                popen = ctypes.POINTER(self._I)()
-                hr = self._fn(
-                    dlg, 0, ctypes.c_long, ctypes.POINTER(self._GUID),
-                    ctypes.POINTER(ctypes.POINTER(self._I)),
-                )(ctypes.addressof(dlg), ctypes.byref(self.IID_IFileOpenDialog), ctypes.byref(popen))
-                if hr < 0 or not popen:
-                    return {'success': False, 'path': '', 'output': f'获取多选对话框接口失败: {ctypes.c_long(hr).value:#x}'}
-                open_dlg = popen.contents
-                try:
-                    pitems = ctypes.POINTER(self._I)()
-                    hr = self._fn(open_dlg, 27, ctypes.c_long, ctypes.POINTER(ctypes.POINTER(self._I)))(
-                        ctypes.addressof(open_dlg), ctypes.byref(pitems)
-                    )
-                    if hr < 0 or not pitems:
-                        return {'success': False, 'path': '', 'output': f'读取多选结果失败: {ctypes.c_long(hr).value:#x}'}
-                    items = pitems.contents
-                    try:
-                        count = ctypes.c_uint()
-                        hr = self._fn(items, 7, ctypes.c_long, ctypes.POINTER(ctypes.c_uint))(
-                            ctypes.addressof(items), ctypes.byref(count)
-                        )
-                        if hr < 0:
-                            return {'success': False, 'path': '', 'output': f'读取多选数量失败: {ctypes.c_long(hr).value:#x}'}
-                        for index in range(count.value):
-                            pitem = ctypes.POINTER(self._I)()
-                            hr = self._fn(items, 8, ctypes.c_long, ctypes.c_uint, ctypes.POINTER(ctypes.POINTER(self._I)))(
-                                ctypes.addressof(items), index, ctypes.byref(pitem)
-                            )
-                            if hr < 0 or not pitem:
-                                continue
-                            item = pitem.contents
-                            pname = ctypes.c_wchar_p()
-                            hr2 = self._fn(item, 5, ctypes.c_long, ctypes.c_ulong, ctypes.POINTER(ctypes.c_wchar_p))(
-                                ctypes.addressof(item), self._SIGDN_FILESYSPATH, ctypes.byref(pname)
-                            )
-                            if hr2 >= 0 and pname.value:
-                                paths.append(pname.value)
-                            self._free_str(pname)
-                            self._release(item)
-                    finally:
-                        self._release(items)
-                finally:
-                    self._release(open_dlg)
-            else:
-                pres = ctypes.POINTER(self._I)()
-                hr = self._fn(dlg, 20, ctypes.c_long, ctypes.POINTER(ctypes.POINTER(self._I)))(
-                    ctypes.addressof(dlg), ctypes.byref(pres)
-                )
-                if hr >= 0 and pres:
-                    item = pres.contents
-                    pname = ctypes.c_wchar_p()
-                    hr2 = self._fn(item, 5, ctypes.c_long, ctypes.c_ulong, ctypes.POINTER(ctypes.c_wchar_p))(
-                        ctypes.addressof(item), self._SIGDN_FILESYSPATH, ctypes.byref(pname)
-                    )
-                    if hr2 >= 0 and pname.value:
-                        paths.append(pname.value)
-                    self._free_str(pname)
-                    self._release(item)
-            if paths:
-                import os as _os
-                self._last_dir = _os.path.dirname(paths[0])
-                log('PICK', f'{op} selected: {len(paths)} item(s)')
-                return {'success': True, 'path': paths[0], 'paths': paths}
-            if multi and op == 'file':
-                return {'success': False, 'path': '', 'output': '未读取到已选择的文件路径'}
-            log('PICK', f'{op} dialog closed without selection')
-            return {'success': False, 'path': ''}
-        except Exception as e:
-            log('PICK', f'dialog error: {type(e).__name__}: {e}')
-            return {'success': False, 'path': '', 'output': str(e)}
-        finally:
-            try:
-                self._release(dlg)
-            except Exception:
-                pass
-            if coinit == 0:
-                ole32.CoUninitialize()
 
 
 # ---------------------------------------------------------------------------
 # WebSocket + ADB Worker coordinator
 # ---------------------------------------------------------------------------
-class ManagerServer:
+class ManagerServer(AdbServiceMixin):
     def __init__(self):
         self.clients: Set[WebSocketServerProtocol] = set()
         from desktop_terminals import DesktopTerminals
@@ -1075,49 +779,6 @@ class ManagerServer:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, functools.partial(func, *args, **kwargs))
 
-    def _start_adb_diagnostic(self, ws: WebSocketServerProtocol, request_id, selected_device: Optional[dict]):
-        """启动单个后台诊断任务；不能在 handler 中等待，以便同客户端可以取消。"""
-        with self._diagnostic_lock:
-            if self._diagnostic_session is not None:
-                return False
-            cancel_event = threading.Event()
-            self._diagnostic_session = {'id': request_id, 'cancelEvent': cancel_event}
-        asyncio.create_task(self._execute_adb_diagnostic(ws, request_id, selected_device, cancel_event))
-        return True
-
-    def _cancel_adb_diagnostic(self, request_id) -> bool:
-        with self._diagnostic_lock:
-            session = self._diagnostic_session
-            if not session or session.get('id') != request_id:
-                return False
-            session['cancelEvent'].set()
-            return True
-
-    async def _execute_adb_diagnostic(self, ws: WebSocketServerProtocol, request_id, selected_device: Optional[dict], cancel_event: threading.Event):
-        """在线程池执行只读探针，并把进度安全地转回 WebSocket loop。"""
-        def progress(current: int, total: int, check_id: str, title: str):
-            self._broadcast_async({
-                'type': 'diagnostic-progress', 'id': request_id,
-                'current': current, 'total': total, 'checkId': check_id, 'title': title,
-            })
-
-        runner = ADBDiagnosticRunner(ADB_PATH, CREATE_NO_WINDOW, log, progress)
-        try:
-            report = await self._run_blocking(runner.run, selected_device, cancel_event)
-            await self._send(ws, {
-                'type': 'diagnostic-result', 'id': request_id,
-                'success': True, 'report': report.to_dict(),
-            })
-        except Exception as e:
-            log('DIAG', f'诊断执行失败: {type(e).__name__}: {e}')
-            await self._send(ws, {
-                'type': 'diagnostic-result', 'id': request_id,
-                'success': False, 'output': f'诊断执行失败：{type(e).__name__}: {e}',
-            })
-        finally:
-            with self._diagnostic_lock:
-                if self._diagnostic_session and self._diagnostic_session.get('id') == request_id:
-                    self._diagnostic_session = None
 
     # --- WebSocket handler ---
     async def ws_handler(self, ws: WebSocketServerProtocol):
@@ -1158,12 +819,24 @@ class ManagerServer:
 
         computer_reads = set()
         cache_tasks = set()
-        def cache_finished(task):
+        def background_failed(task, msg):
+            """后台消息的异常必须显式取回。
+
+            asyncio 只在垃圾回收时打一条难以定位的警告；这里补日志并向界面回帧，
+            否则用户看到的是「点了没反应」，而日志里什么都没有。
+            """
             cache_tasks.discard(task)
-            if not task.cancelled():
-                error = task.exception()
-                if error:
-                    log('RELAY', f'历史缓存清理后台请求失败：{type(error).__name__}: {error}')
+            computer_reads.discard(task)
+            if task.cancelled():
+                return
+            error = task.exception()
+            if error is None:
+                return
+            self._log_message_failure(msg, error)
+            try:
+                asyncio.create_task(self._send_message_failure(ws, msg, error))
+            except RuntimeError:
+                pass
         try:
             async for raw in ws:
                 try:
@@ -1180,14 +853,19 @@ class ManagerServer:
                     else:
                         task = asyncio.create_task(self._handle_message(ws, msg))
                         cache_tasks.add(task)
-                        task.add_done_callback(cache_finished)
+                        task.add_done_callback(lambda t, m=msg: background_failed(t, m))
                 elif (msg.get('type') == 'computer-tool' and msg.get('name') == 'session_read'
                         and len(computer_reads) < 16):
                     task = asyncio.create_task(self._handle_message(ws, msg))
                     computer_reads.add(task)
-                    task.add_done_callback(computer_reads.discard)
+                    task.add_done_callback(lambda t, m=msg: background_failed(t, m))
                 else:
-                    await self._handle_message(ws, msg)
+                    # 单条消息处理失败只影响该请求：不能让异常穿出循环，
+                    # 否则整页的终端、串口、文件面板会一起掉线。
+                    try:
+                        await self._handle_message(ws, msg)
+                    except Exception as exc:
+                        await self._fail_message(ws, msg, exc)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -1238,6 +916,34 @@ class ManagerServer:
                 await self._send(ws, response)
         except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed, ValueError, AttributeError):
             return
+
+    def _log_message_failure(self, msg, exc):
+        """消息处理失败要留下可用于定位的痕迹。
+
+        日志里必须带消息类型和请求 id：界面只表现为「点了没反应」时，
+        没有这两项就只能靠猜。
+        """
+        kind = msg.get('type') if isinstance(msg, dict) else None
+        ident = msg.get('id') if isinstance(msg, dict) else None
+        log('WS', f'消息处理失败 type={kind} id={ident}: {type(exc).__name__}: {exc}')
+
+    async def _send_message_failure(self, ws, msg, exc):
+        """回一帧失败结果，避免前端等待的 Promise 永远悬挂。
+
+        没有 id 的消息是单向通知，前端没有等待者，不必回帧。
+        """
+        if not isinstance(msg, dict) or msg.get('id') is None:
+            return
+        try:
+            await self._send(ws, dict(type='exec-result', id=msg['id'], success=False,
+                                      output=f'{type(exc).__name__}: {exc}'))
+        except Exception:
+            # 连接已断开时回帧必然失败，这不是新问题，只是没有接收方。
+            pass
+
+    async def _fail_message(self, ws, msg, exc):
+        self._log_message_failure(msg, exc)
+        await self._send_message_failure(ws, msg, exc)
 
     async def _handle_message(self, ws, msg: dict):
         typ = msg.get('type')
@@ -1943,7 +1649,7 @@ class ManagerServer:
     def _relay_carrier_options() -> list:
         """设置页的连接方式下拉：已实现的可选，未实现的显式标注原因。"""
         try:
-            from relay_carrier import carrier_specs  # noqa: PLC0415 - 仅此处需要
+            from relay.relay_carrier import carrier_specs  # noqa: PLC0415 - 仅此处需要
             specs = carrier_specs()
         except Exception:
             specs = {}
@@ -1960,170 +1666,6 @@ class ManagerServer:
         options.sort(key=lambda item: (not item['implemented'], item['kind']))
         return options
 
-    async def _exec_adb(self, args: str = '', argv=None, make_executable=False, key: str = ''):
-        """执行 adb 命令。
-
-        普通命令仍接收字符串；文件传输使用 argv，避免 Windows 本地路径
-        中的反斜杠被 shlex.split 当作转义字符吞掉。
-
-        带 ``key`` 且该 key 属于远端设备时改走中转：操作端自带的设备选择符
-        （``-s``/``-t``）会在这里被剥掉 —— 那两个值在从机上没有意义，甚至可能
-        指向从机上的**另一台**设备。
-        """
-        command_args = list(argv) if isinstance(argv, list) else shlex.split(args or '')
-        if key and self._is_remote_key(key):
-            return await self._exec_remote_adb(key, command_args, make_executable)
-        timeout = 60 if isinstance(argv, list) else 30
-        try:
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    [ADB_PATH] + command_args,
-                    capture_output=True, text=True, timeout=timeout,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            output = (proc.stdout or '') + (proc.stderr or '')
-            # 移除最后的换行
-            output = output.rstrip('\n')
-            if proc.returncode == 0:
-                if make_executable:
-                    permission = await self._make_uploaded_script_executable(command_args)
-                    if not permission['success']:
-                        detail = permission.get('output') or '未知错误'
-                        return {
-                            'success': False,
-                            'output': f'上传成功，但自动添加执行权限失败：{detail}',
-                        }
-                    targets = permission.get('targets') or ([permission['target']] if permission.get('target') else [])
-                    suffix = f'；已添加可执行权限 → {"、".join(targets)}' if targets else '；已添加可执行权限'
-                    output = f'{output}{suffix}' if output else f'上传成功{suffix}'
-                if 'push' in command_args:
-                    sync_result = await self._sync_uploaded_files(command_args)
-                    if not sync_result['success']:
-                        detail = sync_result.get('output') or '未知错误'
-                        return {
-                            'success': False,
-                            'output': f'上传成功，但设备文件同步失败：{detail}',
-                        }
-                    output = f'{output}；设备文件已同步' if output else '上传成功；设备文件已同步'
-                return {'success': True, 'output': output}
-            return {'success': False, 'output': output or f'exit code {proc.returncode}'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': f'执行超时 ({timeout}s)'}
-        except Exception as e:
-            return {'success': False, 'output': str(e)}
-
-    async def _exec_remote_adb(self, key: str, command_args, make_executable=False) -> dict:
-        """远端文件经共享目录搬运，普通命令经请求队列执行。"""
-        from relay_app import strip_device_selector
-        tokens = strip_device_selector(command_args)
-        if tokens and tokens[0] in ('push', 'pull'):
-            result = await self._run_blocking(self.relay.remote_transfer, key, command_args, make_executable)
-        else:
-            result = await self._run_blocking(self.relay.remote_exec, key, command_args, 60.0)
-        result['remote'] = True
-        return result
-
-    async def _sync_uploaded_files(self, command_args):
-        """在文件上传及可执行权限设置完成后，刷新目标设备的文件系统缓存。"""
-        try:
-            push_index = command_args.index('push')
-            transport = command_args[:push_index]
-            sync_args = [ADB_PATH, *transport, 'shell', 'sync']
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    sync_args,
-                    capture_output=True, text=True, timeout=15,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            output = ((proc.stdout or '') + (proc.stderr or '')).rstrip('\n')
-            if proc.returncode == 0:
-                return {'success': True, 'output': output}
-            return {'success': False, 'output': output or f'exit code {proc.returncode}'}
-        except ValueError:
-            return {'success': False, 'output': '上传参数不完整'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': 'sync 超时 (15s)'}
-        except Exception as e:
-            return {'success': False, 'output': str(e)}
-
-    async def _make_uploaded_script_executable(self, command_args):
-        """上传 shell 脚本后，在设备端补上可执行权限。"""
-        try:
-            push_index = command_args.index('push')
-            if push_index + 2 >= len(command_args):
-                return {'success': False, 'output': '上传参数不完整'}
-            local_paths = [str(path) for path in command_args[push_index + 1:-1]]
-            remote_path = str(command_args[-1])
-            script_paths = [path for path in local_paths if path.lower().endswith('.sh')]
-            if not script_paths:
-                return {'success': True, 'targets': []}
-            transport = command_args[:push_index]
-
-            check_args = [ADB_PATH, *transport, 'shell', 'test', '-d', remote_path]
-            check = await self._run_blocking(
-                lambda: subprocess.run(
-                    check_args,
-                    capture_output=True, text=False, timeout=10,
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            targets = []
-            for local_path in script_paths:
-                filename = os.path.basename(local_path.replace('\\', '/').rstrip('/'))
-                if not filename:
-                    return {'success': False, 'output': '无法确定脚本文件名'}
-                target = remote_path.rstrip('/') + '/' + filename if check.returncode == 0 else remote_path
-                chmod_args = [ADB_PATH, *transport, 'shell', 'chmod', '+x', target]
-                log('ADB', f'add executable permission: {chmod_args!r}')
-                chmod = await self._run_blocking(
-                    lambda: subprocess.run(
-                        chmod_args,
-                        capture_output=True, text=False, timeout=10,
-                        creationflags=CREATE_NO_WINDOW,
-                    )
-                )
-                if chmod.returncode != 0:
-                    error = ((chmod.stdout or b'') + (chmod.stderr or b'')).decode(
-                        'utf-8', errors='replace'
-                    ).strip()
-                    return {'success': False, 'output': error or f'exit code {chmod.returncode}'}
-                targets.append(target)
-            return {'success': True, 'target': targets[0], 'targets': targets}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': '设置执行权限超时 (10s)'}
-        except Exception as e:
-            log('ADB', f'add executable permission failed: {type(e).__name__}: {e}')
-            return {'success': False, 'output': str(e)}
-
-    async def _exec_logcat(self, serial: str, key: str = ''):
-        try:
-            if key and self._is_remote_key(key):
-                # 远端设备：命令里不能带 -s，由从机自己选定设备。
-                result = await self._run_blocking(
-                    self.relay.remote_exec, key, ['logcat', '-d', '-v', 'brief'], 30.0,
-                )
-                if not result.get('success'):
-                    return result
-                lines = (result.get('output') or '').splitlines()
-                return {'success': True, 'output': '\n'.join(lines[-2000:]), 'remote': True}
-            args = ['-s', serial, 'logcat', '-d', '-v', 'brief'] if serial else ['logcat', '-d', '-v', 'brief']
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    [ADB_PATH] + args,
-                    capture_output=True, text=True, timeout=15,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            lines = (proc.stdout or '').splitlines()
-            trimmed = '\n'.join(lines[-2000:])
-            return {'success': True, 'output': trimmed}
-        except Exception as e:
-            return {'success': False, 'output': str(e)}
 
     # --- Terminal session recording (captures xterm output to file) ---
     def _start_recording(self, key: str, path: str, timestamps: bool = True):
@@ -2221,304 +1763,6 @@ class ManagerServer:
             log('PICK', f'dir error: {e}')
             return {'success': False, 'path': '', 'output': str(e)}
 
-    async def _list_device_dir(self, serial: str, transport_id: str, path: str, key: str = ''):
-        """List contents of a directory on the Android device via adb shell."""
-        log('LDDIR', f'list_device_dir called: serial={serial!r} tid={transport_id!r} path={path!r} key={key!r}')
-        try:
-            path = (path or '/').strip()
-            if not path.startswith('/'):
-                return {'success': False, 'output': '设备目录路径必须是绝对路径', 'entries': []}
-            if key and self._is_remote_key(key):
-                return await self._list_remote_device_dir(key, path)
-            transport = ['-t', str(transport_id)] if transport_id else ['-s', serial]
-            list_args = [ADB_PATH, *transport, 'shell', 'ls', '-1F', path]
-            log('LDDIR', f'Step 1 - args: {list_args!r}')
-            log('LDDIR', f'Step 1 - path({type(path).__name__})={path!r}')
-
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    list_args,
-                    capture_output=True, text=True, timeout=10,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            log('LDDIR', f'Step 1 - returncode={proc.returncode}')
-            log('LDDIR', f'Step 1 - stdout ({len(proc.stdout or "")} chars): {proc.stdout!r}')
-            log('LDDIR', f'Step 1 - stderr ({len(proc.stderr or "")} chars): {proc.stderr!r}')
-
-            output = ((proc.stdout or '') + (proc.stderr or '')).strip()
-            log('LDDIR', f'Step 1 - trimmed output ({len(output)} chars): {output[:500]!r}')
-
-            # Step 2: Detect errors
-            if proc.returncode != 0:
-                log('LDDIR', f'Step 2 - command failed: {proc.returncode}')
-                return {'success': False, 'output': output or f'exit code {proc.returncode}', 'entries': []}
-            if not output:
-                log('LDDIR', 'Step 2 - output empty, returning []')
-                return {'success': True, 'entries': [], 'currentPath': path}
-            err_lower = output.lower()
-            if any(kw in err_lower for kw in ('permission denied', 'cannot access', 'no such file', 'not found', 'opendir failed')):
-                log('LDDIR', f'Step 2 - error detected in output: {output[:200]}')
-                return {'success': False, 'output': output, 'entries': []}
-            log('LDDIR', 'Step 2 - no error detected')
-
-            # Step 3: Parse lines（与远端目录列举共用同一套解析规则）
-            lines = [l for l in output.splitlines() if l.strip()]
-            log('LDDIR', f'Step 3 - {len(lines)} lines: {lines[:20]}')
-            entries = self._parse_device_dir(lines, path)
-            log('LDDIR', 'SUCCESS - returning entries')
-            return {'success': True, 'entries': entries, 'currentPath': path}
-        except Exception as e:
-            log('LDDIR', f'ERROR: {type(e).__name__}: {e}')
-            import traceback
-            log('LDDIR', f'ERROR traceback: {traceback.format_exc()}')
-            return {'success': False, 'output': str(e), 'entries': []}
-
-    @staticmethod
-    def _parse_device_dir(lines, path: str) -> list[dict]:
-        """把 ``ls -1F`` 的输出解析成目录项列表。
-
-        ``-F`` 会在目录后加 ``/``、可执行文件后加 ``*`` 等标记，这里只保留
-        目录判定需要的信息。远端列举与本机列举共用它，避免两条路径的解析分叉。
-        """
-        entries = []
-        for line in lines:
-            if line in ('.', '..'):
-                continue
-            if line.endswith('/'):
-                name, is_dir = line[:-1], True
-            else:
-                name, is_dir = line.rstrip('@*|='), False
-            full_path = path.rstrip('/') + '/' + name if name else ''
-            entries.append({'name': name, 'isDir': is_dir, 'path': full_path})
-        entries.sort(key=lambda e: (not e['isDir'], e['name'].lower()))
-        return entries
-
-    async def _list_remote_device_dir(self, key: str, path: str):
-        """远端设备的目录列举：同一条 ``ls -1F``，只是经从机执行。"""
-        result = await self._run_blocking(
-            self.relay.remote_list_dir, key, path,
-        )
-        if not result.get('success'):
-            return {'success': False, 'output': result.get('output', ''), 'entries': []}
-        output = (result.get('output') or '').strip()
-        if not output:
-            return {'success': True, 'entries': [], 'currentPath': path}
-        lines = [line for line in output.splitlines() if line.strip()]
-        return {
-            'success': True,
-            'entries': self._parse_device_dir(lines, path),
-            'currentPath': path,
-            'remote': True,
-        }
-
-    async def _start_device_edit(self, key: str, serial: str, transport_id: str, remote_path: str):
-        """拉取到临时目录，并通过 Windows“打开方式”选择编辑程序。"""
-        if not key:
-            return {'success': False, 'output': '缺少编辑会话标识'}
-        if not remote_path or not remote_path.startswith('/'):
-            return {'success': False, 'output': '设备文件路径必须是绝对路径'}
-        if not serial and not transport_id:
-            return {'success': False, 'output': '缺少设备标识'}
-        with self._edit_lock:
-            if key in self._edit_sessions:
-                return {'success': False, 'output': '该设备已有未结束的编辑会话'}
-
-        temp_dir = tempfile.mkdtemp(prefix='devmux-edit-')
-        filename = remote_path.rstrip('/').rsplit('/', 1)[-1] or 'device-file'
-        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-        local_path = os.path.join(temp_dir, filename)
-        transport = ['-t', str(transport_id)] if transport_id else ['-s', serial]
-        pull_args = [ADB_PATH, *transport, 'pull', remote_path, local_path]
-        log('EDIT', f'pull device file: {pull_args!r}')
-        try:
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    pull_args,
-                    capture_output=True, text=True, timeout=60,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            output = ((proc.stdout or '') + (proc.stderr or '')).strip()
-            if proc.returncode != 0 or not os.path.isfile(local_path):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return {'success': False, 'output': output or f'exit code {proc.returncode}'}
-
-            with self._edit_lock:
-                self._edit_sessions[key] = {
-                    'tempDir': temp_dir,
-                    'localPath': local_path,
-                    'remotePath': remote_path,
-                    'transport': transport,
-                }
-            try:
-                subprocess.Popen(
-                    ['rundll32.exe', 'shell32.dll,OpenAs_RunDLL', local_path],
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            except Exception:
-                self._cleanup_device_edit(key)
-                return {'success': False, 'output': '无法打开 Windows“打开方式”窗口'}
-            return {'success': True, 'output': '文件已打开；编辑并保存后，点击“保存覆盖”写回设备'}
-        except subprocess.TimeoutExpired:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return {'success': False, 'output': '拉取文件超时 (60s)'}
-        except Exception as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            log('EDIT', f'start edit failed: {type(e).__name__}: {e}')
-            return {'success': False, 'output': str(e)}
-
-    async def _start_inline_edit(self, key: str, serial: str, transport_id: str, remote_path: str):
-        """直接读取设备上的 UTF-8 文本，不创建本地临时文件。"""
-        if not key:
-            return {'success': False, 'output': '缺少编辑会话标识'}
-        if not remote_path or not remote_path.startswith('/'):
-            return {'success': False, 'output': '设备文件路径必须是绝对路径'}
-        if not serial and not transport_id:
-            return {'success': False, 'output': '缺少设备标识'}
-        with self._edit_lock:
-            if key in self._edit_sessions:
-                return {'success': False, 'output': '该设备正在使用外部编辑会话，请先结束后再直接编辑'}
-        with self._inline_lock:
-            if key in self._inline_sessions:
-                return {'success': False, 'output': '该设备已有直接编辑会话'}
-
-        transport = ['-t', str(transport_id)] if transport_id else ['-s', serial]
-        read_args = [ADB_PATH, *transport, 'exec-out', 'cat', remote_path]
-        log('INLINE', f'read remote text: {read_args!r}')
-        try:
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    read_args,
-                    capture_output=True, text=False, timeout=60,
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            if proc.returncode != 0:
-                error = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
-                return {'success': False, 'output': error or f'exit code {proc.returncode}'}
-            content = proc.stdout or b''
-            if len(content) > 4 * 1024 * 1024:
-                return {'success': False, 'output': '文件超过 4MB，无法直接编辑，请使用打开方式'}
-            try:
-                content.decode('utf-8')
-            except UnicodeDecodeError:
-                return {'success': False, 'output': '仅支持 UTF-8 文本文件；二进制文件请使用打开方式'}
-            with self._inline_lock:
-                self._inline_sessions[key] = {
-                    'remotePath': remote_path,
-                    'transport': transport,
-                    'content': content,
-                }
-            return {
-                'success': True,
-                'content': base64.b64encode(content).decode('ascii'),
-                'encoding': 'utf-8',
-                'output': '文件已读取，可直接编辑；修改后点击“立即保存”写回设备',
-            }
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': '读取文件超时 (60s)'}
-        except Exception as e:
-            log('INLINE', f'start inline edit failed: {type(e).__name__}: {e}')
-            return {'success': False, 'output': str(e)}
-
-    async def _save_inline_edit(self, key: str, content_b64: str):
-        """把应用内编辑器的 UTF-8 内容通过 adb shell 标准输入写回设备。"""
-        with self._inline_lock:
-            session = self._inline_sessions.get(key)
-        if not session:
-            return {'success': False, 'output': '没有可保存的直接编辑会话'}
-        try:
-            content = base64.b64decode(content_b64 or '', validate=True)
-            content.decode('utf-8')
-        except (ValueError, UnicodeDecodeError):
-            return {'success': False, 'output': '编辑内容不是有效的 UTF-8 文本'}
-        if len(content) > 4 * 1024 * 1024:
-            return {'success': False, 'output': '文件超过 4MB，无法直接保存'}
-
-        remote_path = session['remotePath']
-        shell_command = f'cat > {shlex.quote(remote_path)}'
-        write_args = [ADB_PATH, *session['transport'], 'shell', shell_command]
-        log('INLINE', f'write remote text: {write_args!r}')
-        try:
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    write_args,
-                    input=content, capture_output=True, text=False, timeout=60,
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            if proc.returncode != 0:
-                error = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
-                return {'success': False, 'output': error or f'exit code {proc.returncode}'}
-            with self._inline_lock:
-                current = self._inline_sessions.get(key)
-                if current:
-                    current['content'] = content
-            return {'success': True, 'output': '已保存到设备'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': '保存文件超时 (60s)'}
-        except Exception as e:
-            log('INLINE', f'save inline edit failed: {type(e).__name__}: {e}')
-            return {'success': False, 'output': str(e)}
-
-    def _close_inline_edit(self, key: str):
-        with self._inline_lock:
-            session = self._inline_sessions.pop(key, None)
-        return {'success': True, 'output': '直接编辑会话已关闭'} if session else {'success': True, 'output': ''}
-
-    def _cleanup_all_inline_edits(self):
-        with self._inline_lock:
-            self._inline_sessions.clear()
-
-    async def _finish_device_edit(self, key: str, save: bool):
-        """保存或放弃编辑会话，并清理临时文件。"""
-        with self._edit_lock:
-            session = self._edit_sessions.get(key)
-        if not session:
-            return {'success': False, 'output': '没有可结束的编辑会话'}
-        if not save:
-            self._cleanup_device_edit(key)
-            return {'success': True, 'output': '已放弃编辑，临时文件已删除'}
-
-        push_args = [
-            ADB_PATH, *session['transport'], 'push',
-            session['localPath'], session['remotePath'],
-        ]
-        log('EDIT', f'push edited file: {push_args!r}')
-        try:
-            proc = await self._run_blocking(
-                lambda: subprocess.run(
-                    push_args,
-                    capture_output=True, text=True, timeout=60,
-                    encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW,
-                )
-            )
-            output = ((proc.stdout or '') + (proc.stderr or '')).strip()
-            if proc.returncode != 0:
-                return {'success': False, 'output': output or f'exit code {proc.returncode}'}
-            self._cleanup_device_edit(key)
-            return {'success': True, 'output': '已覆盖设备端文件，临时文件已删除'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'output': '保存文件超时 (60s)'}
-        except Exception as e:
-            log('EDIT', f'save edit failed: {type(e).__name__}: {e}')
-            return {'success': False, 'output': str(e)}
-
-    def _cleanup_device_edit(self, key: str):
-        with self._edit_lock:
-            session = self._edit_sessions.pop(key, None)
-        if session:
-            shutil.rmtree(session.get('tempDir', ''), ignore_errors=True)
-
-    def _cleanup_all_device_edits(self):
-        with self._edit_lock:
-            keys = list(self._edit_sessions.keys())
-        for key in keys:
-            self._cleanup_device_edit(key)
 
     # --- Lifecycle ---
     async def run(self):
@@ -2787,17 +2031,6 @@ def main():
         except Exception:
             pass
         raise
-
-def main_old():
-    http_srv = start_http_server()
-    mgr = ManagerServer()
-    try:
-        asyncio.run(mgr.run())
-    except KeyboardInterrupt:
-        log('MAIN', 'Shutting down...')
-    finally:
-        http_srv.shutdown()
-
 
 if __name__ == '__main__':
     main()

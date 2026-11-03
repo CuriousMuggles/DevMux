@@ -95,20 +95,20 @@ def run() -> bool:
     assert first.is_stale(), '初见旧序号不能证明在线'
     for tick in range(1, 21):
         observed = observer.observe(replace(sample, heartbeatSeq=100 + tick), now=100 + tick)
-        with patch.object(relay.time, 'monotonic', return_value=100 + tick + .5):
+        with patch.object(time, 'monotonic', return_value=100 + tick + .5):
             assert not observed.is_stale(now=1e15, skew_ms=-1e15), '递增心跳不应受墙钟和旧mtime影响'
     frozen = observer.observe(replace(sample, heartbeatSeq=120), now=130)
-    with patch.object(relay.time, 'monotonic', return_value=123):
+    with patch.object(time, 'monotonic', return_value=123):
         assert not frozen.is_stale(), '恰好3秒仍在期限内'
-    with patch.object(relay.time, 'monotonic', return_value=123.001):
+    with patch.object(time, 'monotonic', return_value=123.001):
         assert frozen.is_stale(), '超过3秒未推进应离线'
     rolled_back = observer.observe(replace(sample, heartbeatSeq=105), now=131)
-    with patch.object(relay.time, 'monotonic', return_value=131):
+    with patch.object(time, 'monotonic', return_value=131):
         assert frozen.is_stale() and rolled_back.is_stale(), '同值和旧缓存不能延长在线期限'
     restarted = replace(sample, pid=2, startedAt='generation-b', heartbeatSeq=1, uptimeSeconds=0)
     assert observer.observe(restarted, now=132).is_stale(), '重启需要重新观察序号推进'
     recovered = observer.observe(replace(restarted, heartbeatSeq=2), now=133)
-    with patch.object(relay.time, 'monotonic', return_value=133):
+    with patch.object(time, 'monotonic', return_value=133):
         assert not recovered.is_stale(), '重启后序号推进应恢复在线'
         assert observer.observe(sample, now=134).is_stale(), '旧启动代次不能复活'
     assert 'lastSequenceAdvanceMono' not in recovered.to_dict() and 'sequenceObserved' not in recovered.to_dict()

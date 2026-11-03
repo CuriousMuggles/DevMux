@@ -53,7 +53,7 @@ def worker(output):
                 return dict(left=box.left,top=box.top,right=box.right,bottom=box.bottom)
             def verify():
                 try:
-                    wait(lambda:root.evaluate_js("typeof SerialIntegration!=='undefined' && ws?.readyState===1"))
+                    wait(lambda:root.evaluate_js("typeof SerialIntegration!=='undefined' && typeof ws!=='undefined' && ws.readyState===1"))
                     import base64
                     from plugin_pack import pack
                     checked=[]

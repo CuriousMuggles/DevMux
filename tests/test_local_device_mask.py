@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import relay          # noqa: E402
-import relay_node     # noqa: E402
+from relay import relay_node  # noqa: E402
+from relay import relay_adb
 
 FAKE_DEVICES = [
     {'serial': 'devA', 'state': 'device', 'transportId': 2, 'key': 'devA:tid=2'},
@@ -95,7 +96,7 @@ def _check_worker_mask() -> list:
 # 2. RelayNode：不枚举、不共享
 # ----------------------------------------------------------------------
 def _check_node_mask(root) -> list:
-    saved_list = relay_node.list_devices
+    saved_list = relay_adb.list_devices
     calls: list = []
     nodes: list = []
     checks: list = []
@@ -105,7 +106,7 @@ def _check_node_mask(root) -> list:
         return _fake_devices(), ''
 
     try:
-        relay_node.list_devices = counting_list
+        relay_adb.list_devices = counting_list
 
         masked = relay_node.RelayNode(
             peer_id='pc-a', role=relay.ROLE_MASTER, root=os.path.join(root, 'a'),
@@ -151,7 +152,7 @@ def _check_node_mask(root) -> list:
                 node.stop()
             except Exception:
                 pass
-        relay_node.list_devices = saved_list
+        relay_adb.list_devices = saved_list
     return checks
 
 

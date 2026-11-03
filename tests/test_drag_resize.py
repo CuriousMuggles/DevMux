@@ -46,6 +46,15 @@ def run() -> bool:
         js = resp.read().decode('utf-8')
         resp = urllib.request.urlopen(f'http://127.0.0.1:{http_port}/style.css?v=52', timeout=5)
         css = resp.read().decode('utf-8')
+        # state 已拆到 core.js（ESM 共享原语层），中转状态字段的断言跟着走。
+        resp = urllib.request.urlopen(f'http://127.0.0.1:{http_port}/core.js', timeout=5)
+        core_js = resp.read().decode('utf-8')
+        # 源码断言按「整份前端源码」检查：ESM 拆出的特性模块拼在 app.js 之后。
+        # 顺序敏感的三处 split()（init/initHighlight/_buildPanelCell）都在 app.js
+        # 内部，拼在后面不会改变它们的相对位置。
+        for extra in ('net.js', 'notify.js', 'relay.js', 'terminal.js'):
+            resp = urllib.request.urlopen(f'http://127.0.0.1:{http_port}/{extra}', timeout=5)
+            js += '\n' + resp.read().decode('utf-8')
 
         # 3. Check JS
         js_checks = [
@@ -146,7 +155,7 @@ def run() -> bool:
                 ('ADB diagnostic supports cancellation', "cancel-adb-diagnostic" in js),
                 ('ADB diagnostic progress handler', 'diagnostic-progress' in js),
                 ('ADB diagnostic renders plain text', 'appendDiagnosticText' in js),
-                ('relay state in frontend state', 'relay: {' in js),
+                ('relay state in frontend state', 'relay: {' in core_js),
                 ('relay status handler', "case 'relay-status'" in js),
                 ('relay peer request handler', "case 'relay-peer-request'" in js),
                 ('relay confirm dialog', 'relay-confirm-overlay' in js),

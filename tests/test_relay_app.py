@@ -26,9 +26,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import relay          # noqa: E402
-import relay_app      # noqa: E402
-import relay_node     # noqa: E402
-import relay_session  # noqa: E402
+from relay import relay_app  # noqa: E402
+from relay import relay_app_common  # noqa: E402 - 策略常量已随 B7 下沉，赋值要打在这里
+from relay import relay_adb
+from relay import relay_node  # noqa: E402
+from relay import relay_session  # noqa: E402
 
 
 # ----------------------------------------------------------------------
@@ -56,7 +58,12 @@ def _fake_execute(adb_path, device, argv, *, timeout=30.0, max_bytes=None):
 
 
 class _patch:
-    """临时替换模块属性（仅本文件用到的简单名字）。"""
+    """临时替换模块属性（仅本文件用到的简单名字）。
+
+    名字若属于 adb 执行层（``relay_adb``），就打在那里 —— 那才是真正读取它的
+    模块。``relay_node`` 里的同名符号只是兼容再导出，打在门面上不会生效，
+    测试会跑真实 adb 而“假通过”。
+    """
 
     def __init__(self, **targets):
         self._targets = targets
@@ -64,13 +71,14 @@ class _patch:
 
     def __enter__(self):
         for name, value in self._targets.items():
-            self._saved[name] = getattr(relay_node, name)
-            setattr(relay_node, name, value)
+            owner = relay_adb if hasattr(relay_adb, name) else relay_node
+            self._saved[name] = (owner, getattr(owner, name))
+            setattr(owner, name, value)
         return self
 
     def __exit__(self, *_exc):
-        for name, value in self._saved.items():
-            setattr(relay_node, name, value)
+        for name, (owner, value) in self._saved.items():
+            setattr(owner, name, value)
         return False
 
 
@@ -335,13 +343,13 @@ def _check_config(root) -> list:
 # ----------------------------------------------------------------------
 def _check_end_to_end(root) -> list:
     checks: list = []
-    # 会话重开的退避默认是 ``SESSION_REOPEN_BACKOFF_S`` × 失败次数（最多 5 次，
+    # 会话重开的退避默认是 ``relay_app_common.SESSION_REOPEN_BACKOFF_S`` × 失败次数（最多 5 次，
     # 即最坏 25s），而本用例要验的是「确认之后能不能把会话开起来」，退避策略本身
     # 由 ``_check_slow_retry`` 专门覆盖。这里把退避压小、把失败上限抬高，让重开
     # 变快且永不落进 60s 慢速重试 —— 否则断言会卡在等待窗口与退避的边界上随机失败。
-    saved = (relay_app.SESSION_REOPEN_BACKOFF_S, relay_app.SESSION_MAX_FAILURES)
-    relay_app.SESSION_REOPEN_BACKOFF_S = 0.2
-    relay_app.SESSION_MAX_FAILURES = 1000
+    saved = (relay_app_common.SESSION_REOPEN_BACKOFF_S, relay_app_common.SESSION_MAX_FAILURES)
+    relay_app_common.SESSION_REOPEN_BACKOFF_S = 0.2
+    relay_app_common.SESSION_MAX_FAILURES = 1000
     harness = _Harness(root)
     try:
         with _patch(list_devices=_fake_list_devices, execute=_fake_execute):
@@ -531,8 +539,8 @@ def _check_end_to_end(root) -> list:
                 str(harness.master_devices[:1])[:120],
             ))
     finally:
-        (relay_app.SESSION_REOPEN_BACKOFF_S,
-         relay_app.SESSION_MAX_FAILURES) = saved
+        (relay_app_common.SESSION_REOPEN_BACKOFF_S,
+         relay_app_common.SESSION_MAX_FAILURES) = saved
         harness.stop()
     return checks
 
@@ -682,13 +690,13 @@ def _check_slow_retry(root) -> list:
     """注入可恢复的 PTY 故障，验证超出快速重试上限后仍慢速重试。"""
     checks: list = []
     saved = (
-        relay_app.SESSION_MAX_FAILURES,
-        relay_app.SESSION_RETRY_SLOW_S,
-        relay_app.SESSION_REOPEN_BACKOFF_S,
+        relay_app_common.SESSION_MAX_FAILURES,
+        relay_app_common.SESSION_RETRY_SLOW_S,
+        relay_app_common.SESSION_REOPEN_BACKOFF_S,
     )
-    relay_app.SESSION_MAX_FAILURES = 0
-    relay_app.SESSION_RETRY_SLOW_S = 0.3
-    relay_app.SESSION_REOPEN_BACKOFF_S = 0.2
+    relay_app_common.SESSION_MAX_FAILURES = 0
+    relay_app_common.SESSION_RETRY_SLOW_S = 0.3
+    relay_app_common.SESSION_REOPEN_BACKOFF_S = 0.2
     harness = _Harness(root, heartbeat_s=0.5)
     try:
         with _patch(list_devices=_fake_list_devices, execute=_fake_execute):
@@ -719,9 +727,9 @@ def _check_slow_retry(root) -> list:
             )
     finally:
         (
-            relay_app.SESSION_MAX_FAILURES,
-            relay_app.SESSION_RETRY_SLOW_S,
-            relay_app.SESSION_REOPEN_BACKOFF_S,
+            relay_app_common.SESSION_MAX_FAILURES,
+            relay_app_common.SESSION_RETRY_SLOW_S,
+            relay_app_common.SESSION_REOPEN_BACKOFF_S,
         ) = saved
         harness.stop()
     return checks

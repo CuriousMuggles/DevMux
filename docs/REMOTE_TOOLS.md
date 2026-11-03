@@ -43,7 +43,7 @@
 
 tests/test_extension_tools.py 验证真实共享目录中转的从机配置、枚举、控制、权限撤销、旧代次和解除连接。Edge/WS 测试验证权限提示、远程路径、控制、从机本地关闭后的状态同步及离线保留目标。硬件使用模拟器；实体继电器、两台电脑 SMB 延迟和 Bitdefender 稳定性仍需双端现场验证。
 
-源码启动前运行 `python -B relay_probe_build.py` 编译固定 x86 辅助程序，需要 Windows .NET Framework 4 的 csc.exe；发布构建和继电器回归会自动编译。最终 EXE 已内置辅助程序，目标电脑不需要编译器。
+源码启动前运行 `python -B -m relay.relay_probe_build` 编译固定 x86 辅助程序，需要 Windows .NET Framework 4 的 csc.exe；发布构建和继电器回归会自动编译。最终 EXE 已内置辅助程序，目标电脑不需要编译器。
 
 ## DB 远程烧写及全工具浮窗（2026-10-13）
 
@@ -67,6 +67,6 @@ Agent 始终传完整 computer 目标标识；本机调用 ExtensionTools.call�
 
 ## Serial 远程串口（2026-10-14 / REQ-28）
 
-`serial → SerialService` 复用统一扩展与共享目录选路；从机独立权限默认关闭。持续接入采用 `call_for_context(action, arguments, owner, caller)`，浏览器入口注入gui来源，认证Agent始终agent来源；远程句柄绑定nodeId+connectionId。`close_owner`在撤销/换代/停止时释放该连接接入，本机接入保留。每COM只有一个连接；GUI输入优先，旧generation不得写入；base64字节/游标支持HEX；XMODEM双向任务在目标端执行、传输独占，32KiB块上传/下载，进度通过原串口流元数据转发。完整接口与配置见 [串口使用说明](docs/使用说明/串口使用说明.md)，设计及稳定验收编号见 [串口交互接入设计](docs/需求与设计/串口交互接入设计.md)。
+`serial → SerialService` 复用统一扩展与共享目录选路；从机独立权限默认关闭。持续接入采用 `call_for_context(action, arguments, owner, caller)`，浏览器入口注入gui来源，认证Agent始终agent来源；远程句柄绑定nodeId+connectionId。`close_owner`在撤销/换代/停止时释放该连接接入，本机接入保留。每COM只有一个连接；GUI输入优先，旧generation不得写入；base64字节/游标支持HEX；XMODEM双向任务在目标端执行、传输独占，32KiB块上传/下载，进度通过原串口流元数据转发。完整接口与配置见 [串口使用说明](使用说明/串口使用说明.md)，设计及稳定验收编号见 [串口交互接入设计](需求与设计/串口交互接入设计.md)。
 
 远程串口打开时协商`serialStreamProtocol=1`，后续读写/控制/关闭使用按接入隔离的持续流，避免逐次request/results扫描。输入带递增序号与回执，逐帧执行端准入，绑定启动身份和连接代次；旧从机兼容原协议并提示升级。输出JSON帧保留base64原始字节及绝对游标，GUI和Agent共用此路径。

@@ -25,11 +25,11 @@ adb 都能看到两台设备**；真实跨机时不会这样。为了不让「�
 
 用法：
 
-    python relay_app_demo.py                 # 临时共享目录，跑完保留留痕
-    python relay_app_demo.py --root \\\\srv\\relay   # 两台电脑时用它
-    python relay_app_demo.py --slave-serial f62ca3df  # 指定从机共享哪台设备
-    python relay_app_demo.py --master-local-devices   # 主控照常识别本机设备（旧行为）
-    python relay_app_demo.py --no-stale-master  # 不预置退役主控的残留心跳
+    python tools/demos/relay_app_demo.py                 # 临时共享目录，跑完保留留痕
+    python tools/demos/relay_app_demo.py --root \\\\srv\\relay   # 两台电脑时用它
+    python tools/demos/relay_app_demo.py --slave-serial f62ca3df  # 指定从机共享哪台设备
+    python tools/demos/relay_app_demo.py --master-local-devices   # 主控照常识别本机设备（旧行为）
+    python tools/demos/relay_app_demo.py --no-stale-master  # 不预置退役主控的残留心跳
 """
 from __future__ import annotations
 
@@ -47,9 +47,12 @@ from pathlib import Path
 
 import websockets
 
+# 脚本位于 tools/，项目模块与 server.py 在上一层。
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(ROOT_DIR))
+
 import relay
 
-ROOT_DIR = Path(__file__).resolve().parent
 PYTHON = sys.executable
 OK = '  [ OK ]'
 BAD = '  [FAIL]'

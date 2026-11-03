@@ -12,8 +12,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import relay
-import relay_journal as journal
-import relay_node
+from relay import relay_store
+from relay import relay_journal as journal
+from relay import relay_adb
 from tests.test_relay_node import _make_node, _wait_until, _fake_list_devices, _fake_execute
 
 
@@ -177,7 +178,7 @@ class JournalTests(unittest.TestCase):
         outgoing, incoming = self.queues()
         request = self.request()
         outgoing.submit(request)
-        with patch.object(relay, 'atomic_write_json', side_effect=OSError('确认不可写')):
+        with patch.object(relay_store, 'atomic_write_json', side_effect=OSError('确认不可写')):
             incoming.pending_requests()
             self.assertTrue(incoming.runtime.notices)
         self.assertEqual(len(incoming.pending_requests()), 1)
@@ -208,7 +209,7 @@ class JournalTests(unittest.TestCase):
         script = '''
 import os,sys
 from pathlib import Path
-import relay_journal as journal
+from relay import relay_journal as journal
 root=Path(sys.argv[1])
 runtime=journal.Runtime(root/'local'/'child.sqlite3','target')
 queue=journal.JournalQueue(str(root/'share'),'slave',runtime)
@@ -235,7 +236,7 @@ os._exit(17)
                 root.mkdir()
                 master = _make_node(str(root), 'master', relay.ROLE_MASTER, 'node-a')
                 slave = _make_node(str(root), 'slave', relay.ROLE_SLAVE, 'node-b', control_journal=not legacy)
-                with patch.object(relay_node, 'list_devices', _fake_list_devices), patch.object(relay_node, 'execute', _fake_execute):
+                with patch.object(relay_adb, 'list_devices', _fake_list_devices), patch.object(relay_adb, 'execute', _fake_execute):
                     try:
                         self.assertTrue(master.start()[0])
                         self.assertTrue(slave.start()[0])

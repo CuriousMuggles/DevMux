@@ -11,8 +11,10 @@ import time
 import uuid
 from pathlib import Path
 
-import relay
-import relay_file_io
+from . import relay_file_io
+from . import relay_constants
+from . import relay_protocol
+from . import relay_store
 
 VERSION = 1
 SEGMENT_BYTES = 1024 * 1024
@@ -126,7 +128,7 @@ class Writer:
                     raise OSError('控制日志未确认积压已满，本次未投递；请恢复对端连接')
             # head先发布，读端能按固定路径发现新段；空段/半条不会被确认消费。
             if self.announced != self.sequence:
-                relay.atomic_write_json(str(self.directory / 'head.json'),
+                relay_store.atomic_write_json(str(self.directory / 'head.json'),
                                         {'writer': self.epoch, 'segment': self.sequence})
                 self.announced = self.sequence
             try:
@@ -144,7 +146,7 @@ class Runtime:
     """状态库必须位于本机；共享目录只有消息日志、发现头和消费确认。"""
 
     def __init__(self, state_path, node_id):
-        self.node_id = relay.check_peer_id(node_id, '实例键')
+        self.node_id = relay_protocol.check_peer_id(node_id, '实例键')
         if relay_file_io.is_remote(str(state_path)):
             raise ValueError('控制日志状态库必须位于本机磁盘')
         Path(state_path).parent.mkdir(parents=True, exist_ok=True)
@@ -182,7 +184,7 @@ class Runtime:
         ''')
         # 在副作用发生与回执提交之间退出，不能推断执行失败，更不能再次执行。
         for (req_id,) in self.db.execute("SELECT id FROM inbox WHERE state='running'").fetchall():
-            result = relay.Result(reqId=req_id, status=relay.STATUS_ERROR,
+            result = relay_protocol.Result(reqId=req_id, status=relay_constants.STATUS_ERROR,
                                   error='执行端重启，原操作结果不确定，不会自动重发执行',
                                   extra={'outcomeUnknown': True}).to_dict()
             self.db.execute("UPDATE inbox SET state='done',result=?,published=0 WHERE id=?",
@@ -270,7 +272,7 @@ class Runtime:
                 ack_path = str(directory / (match[1] + '.ack'))
                 position = (int(match[2]), end)
                 if end and position > self.acknowledged.get(ack_path, (-1, -1)):
-                    _journal_io('写入消费确认', ack_path, lambda: relay.atomic_write_json(
+                    _journal_io('写入消费确认', ack_path, lambda: relay_store.atomic_write_json(
                         ack_path, {'segment': int(match[2]), 'offset': end}))
                     self.acknowledged[ack_path] = position
 
@@ -282,12 +284,12 @@ class Runtime:
         # 实例键来自心跳而非目录枚举，新通道首次连接也能按已知固定路径读。
         sources.update(getattr(queue, 'journal_sources', ()))
         for source in sorted(sources):
-            if not relay.valid_peer_id(source):
+            if not relay_protocol.valid_peer_id(source):
                 continue
             route = str(Path(queue.results_dir) / 'journal-v1' / source)
 
             def accept(body):
-                request = relay.Request.from_dict(body)
+                request = relay_protocol.Request.from_dict(body)
                 if request.payload.get('sourceNodeId') != source:
                     raise ValueError('控制日志来源实例不一致')
                 previous = self.db.execute('SELECT body FROM inbox WHERE id=?', (request.reqId,)).fetchone()
@@ -307,7 +309,7 @@ class Runtime:
         with self.lock:
             rows = self.db.execute("SELECT id,body FROM inbox WHERE target=? AND state='pending' ORDER BY rowid",
                                    (queue.peer_id,)).fetchall()
-        return [('journal:' + req_id, relay.Request.from_dict(json.loads(body))) for req_id, body in rows]
+        return [('journal:' + req_id, relay_protocol.Request.from_dict(json.loads(body))) for req_id, body in rows]
 
     def claim(self, req_id):
         with self.lock, self.db:
@@ -335,7 +337,7 @@ class Runtime:
 
     def read_reply(self, queue, req_id):
         def accept(body):
-            result = relay.Result.from_dict(body)
+            result = relay_protocol.Result.from_dict(body)
             self.db.execute('INSERT OR REPLACE INTO replies VALUES (?,?)',
                             (result.reqId, json.dumps(body, ensure_ascii=False)))
 
@@ -344,7 +346,7 @@ class Runtime:
                 return None
             self.consume(Path(queue.results_dir) / 'journal-v1' / self.node_id, accept)
             row = self.db.execute('SELECT body FROM replies WHERE id=?', (req_id,)).fetchone()
-        return relay.Result.from_dict(json.loads(row[0])) if row else None
+        return relay_protocol.Result.from_dict(json.loads(row[0])) if row else None
 
     def close(self):
         with self.lock:
@@ -354,7 +356,7 @@ class Runtime:
                 self.owner.close()
 
 
-class JournalQueue(relay.RelayQueue):
+class JournalQueue(relay_protocol.RelayQueue):
     """接收双协议，发送仅按协商选择一种协议；流相关接口沿用旧队列。"""
 
     def __init__(self, root, peer_id, runtime, *, sending=False):

@@ -3,16 +3,20 @@
 全部在本地临时目录中运行，不依赖第二台机器、共享盘、网络或真实 ADB 设备，
 也不启动任何线程或服务。
 """
-import os
-import shutil
 import sys
-import tempfile
-import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from relay import relay_store  # noqa: E402
+from relay import relay_protocol  # noqa: E402
+import json
+import os
+import shutil
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
 
 import relay  # noqa: E402
 
@@ -307,7 +311,7 @@ def _check_fast_notifications(root):
     reader = relay.RelayQueue.for_peer(channel, 'slave')
     request = relay.new_request(relay.KIND_EXEC, 'master', payload={'argv': ['shell', 'ls -1F /']})
     path = writer.submit(request)
-    with patch.object(relay, 'list_messages', return_value=[]), patch.object(relay, 'read_json', return_value=None):
+    with patch.object(relay_store, 'list_messages', return_value=[]), patch.object(relay_store, 'read_json', return_value=None):
         found = reader.pending_requests(source_peer_ids=['master'])
         notified = len(found) == 1 and found[0][1].reqId == request.reqId
         writer.write_result(relay.Result(reqId=request.reqId, status=relay.STATUS_OK, stdout='data/'))
@@ -321,10 +325,10 @@ def _check_fast_notifications(root):
     next_request = relay.new_request(relay.KIND_EXEC, 'master')
     next_filename = relay.make_req_filename(next_request, 2)
     journal = os.path.join(writer.requests_dir, '.from-master.jsonl')
-    payload = relay.json.dumps({'file': next_filename, 'request': next_request.to_dict()}).encode() + b'\n'
+    payload = json.dumps({'file': next_filename, 'request': next_request.to_dict()}).encode() + b'\n'
     with open(journal, 'ab') as stream:
         stream.write(payload[:len(payload)//2])
-    with patch.object(relay, 'list_messages', return_value=[]):
+    with patch.object(relay_store, 'list_messages', return_value=[]):
         incomplete = reader.pending_requests(source_peer_ids=['master']) == []
         with open(journal, 'ab') as stream:
             stream.write(payload[len(payload)//2:])
@@ -344,19 +348,19 @@ def _check_journal_rotation(root):
     writer.prepare_fast_results()
     journal = os.path.join(writer.results_dir, '.replies.jsonl')
     bounded = True
-    with patch.object(relay, 'FAST_JOURNAL_MAX_BYTES', 256):
+    with patch.object(relay_protocol, 'FAST_JOURNAL_MAX_BYTES', 256):
         for i in range(40):
             writer.write_result(relay.Result(reqId=f'roll-{i}', status=relay.STATUS_OK))
     bounded = os.path.getsize(journal) <= 256 + 4096
     reader = relay.RelayQueue.for_peer(channel, 'slave')
     # 模拟长期运行的读进程：写端回卷后仍持有一个越过新文件末尾的旧 offset。
     reader._fast_offsets[journal] = 10 ** 9
-    with patch.object(relay, 'list_messages', return_value=[]), \
-            patch.object(relay, 'read_json', return_value=None):
+    with patch.object(relay_store, 'list_messages', return_value=[]), \
+            patch.object(relay_store, 'read_json', return_value=None):
         latest = reader.read_result('roll-39')
     tail_read = latest is not None and latest.status == relay.STATUS_OK
     # 请求日志同一机制：回卷后不破坏目录枚举与追加交付。
-    with patch.object(relay, 'FAST_JOURNAL_MAX_BYTES', 256):
+    with patch.object(relay_protocol, 'FAST_JOURNAL_MAX_BYTES', 256):
         for i in range(30):
             req = relay.new_request(relay.KIND_EXEC, 'master', payload={'argv': ['echo', str(i)]})
             writer.submit(req)
@@ -364,7 +368,7 @@ def _check_journal_rotation(root):
     requests_bounded = os.path.getsize(req_journal) <= 256 + 4096
     req_reader = relay.RelayQueue.for_peer(channel, 'slave')
     req_reader._fast_offsets[req_journal] = 10 ** 9
-    with patch.object(relay, 'list_messages', return_value=[]):
+    with patch.object(relay_store, 'list_messages', return_value=[]):
         recent = req_reader.pending_requests(source_peer_ids=['master'])
     requests_tail = len(recent) >= 1 and recent[-1][1].payload['argv'][1] == '29'
     return [('追加日志超限回卷后大小有界', bounded, ''),

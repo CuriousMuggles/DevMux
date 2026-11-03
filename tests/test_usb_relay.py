@@ -30,7 +30,7 @@ def tool_files(directory):
 def run():
     try:
         # 源码回归不能依赖上一轮留下的构建产物。
-        from relay_probe_build import build_relay_probe
+        from relay.relay_probe_build import build_relay_probe
         build_relay_probe(ROOT)
         with tempfile.TemporaryDirectory(prefix='usb-relay-test-') as temporary:
             root = Path(temporary)

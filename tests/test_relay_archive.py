@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
-import relay_archive as archive
-from relay_node import RelayNode
+from relay import relay_archive as archive
+from relay.relay_node import RelayNode
 
 
 class ArchiveTests(unittest.TestCase):

@@ -21,9 +21,9 @@
 
 用法：
 
-    python relay_pool_demo.py                 # 临时共享目录，跑完保留留痕
-    python relay_pool_demo.py --root \\\\srv\\relay   # 用真实共享目录（会写 pool/<池>/）
-    python relay_pool_demo.py --keep          # 保留临时目录，便于手工翻看现场
+    python tools/demos/relay_pool_demo.py                 # 临时共享目录，跑完保留留痕
+    python tools/demos/relay_pool_demo.py --root \\\\srv\\relay   # 用真实共享目录（会写 pool/<池>/）
+    python tools/demos/relay_pool_demo.py --keep          # 保留临时目录，便于手工翻看现场
 """
 from __future__ import annotations
 
@@ -35,11 +35,12 @@ import sys
 import tempfile
 import time
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# 脚本位于 tools/，项目模块在上一层。
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
 import relay  # noqa: E402
-import relay_node  # noqa: E402
+from relay import relay_node  # noqa: E402
 
 POOL_ID = 'team-a'
 OTHER_POOL_ID = 'team-b'

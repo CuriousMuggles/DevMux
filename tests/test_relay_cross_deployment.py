@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import relay
-import relay_app
-import relay_node
+from relay import relay_app
+from relay import relay_node
 from tests.test_relay_app import FakeBackend, _patch, _fake_list_devices, _fake_execute, _wait_until
 
 

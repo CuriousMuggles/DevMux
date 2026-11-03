@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from tests import test_ui_e2e as base
 from windows_executor import WindowsService
-import relay_node
+from relay import relay_adb
 from tests.test_relay_app import _Harness
 
 
@@ -50,7 +50,7 @@ def check_computer(ws_url, url, manager):
                 const lines=b?Array.from({length:b.length},(_,i)=>b.getLine(i)?.translateToString(true)).join('\n'):'';
                 throw new Error('电脑工具页面等待超时，步骤 '+step+'；'+JSON.stringify({cols:t?.term.cols,rows:t?.term.rows,width:t?.xtermDiv.clientWidth,height:t?.xtermDiv.clientHeight,tab:state.currentTab,layout:state.layout})+'；'+lines.slice(-6500));
               };
-              await wait(() => document.getElementById('window-powershell') && ws && ws.readyState === 1);
+              await wait(() => document.getElementById('window-powershell') && typeof ws!=='undefined' && ws.readyState === 1);
               document.getElementById('window-powershell').click();
               await wait(() => document.getElementById('powershell-target').options.length > 0);
               const shortName = document.getElementById('window-powershell').textContent.trim() === 'PowerShell…';
@@ -125,7 +125,7 @@ def check_computer(ws_url, url, manager):
             result['shellClosed'] = not manager.windows.sessions
             result['ok'] = result.get('ok') and result['shellClosed']
             print(f'  [{"PASS" if result.get("ok") else "FAIL"}] 命令行工具 UI：真实 PowerShell 交互、Ctrl+C、权限及主终端布局 ({result})')
-            with patch.object(relay_node, 'list_devices', return_value=([], '')):
+            with patch.object(relay_adb, 'list_devices', return_value=([], '')):
                 harness.start()
                 harness.confirm_both()
                 manager.relay = harness.master
@@ -140,7 +140,7 @@ def check_computer(ws_url, url, manager):
                     const lines=b?Array.from({length:b.length},(_,i)=>b.getLine(i)?.translateToString(true)).join('\n'):'';
                     throw new Error('从机终端等待超时，步骤 '+step+'；'+document.querySelector('.powershell-terminal-status')?.textContent+'；'+lines.slice(-3000));
                   };
-                  await wait(() => document.getElementById('window-powershell') && ws && ws.readyState === 1);
+                  await wait(() => document.getElementById('window-powershell') && typeof ws!=='undefined' && ws.readyState === 1);
                   document.getElementById('window-powershell').click();
                   const select = document.getElementById('powershell-target');
                   await wait(() => [...select.options].some(option => option.value === chosen));

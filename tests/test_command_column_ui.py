@@ -63,7 +63,7 @@ def check(endpoint, output):
             except AssertionError as exc:
                 if 'Execution context was destroyed' not in str(exc): raise
             time.sleep(.05)
-        evaluate("(async()=>{window.waitColumn=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('列编辑等待超时')};await waitColumn(()=>typeof state!=='undefined'&&Object.values(state.terminals).length>=2&&ws.readyState===1);window.columnKey=Object.keys(state.terminals)[0];window.a=state.terminals[columnKey].panel.querySelector('.terminal-cmd-textarea');a.parentElement.style.height='180px';return true;})()")
+        evaluate("(async()=>{window.waitColumn=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('列编辑等待超时')};await waitColumn(()=>typeof state!=='undefined'&&Object.values(state.terminals).length>=2&&typeof ws!=='undefined'&&ws.readyState===1);window.columnKey=Object.keys(state.terminals)[0];window.a=state.terminals[columnKey].panel.querySelector('.terminal-cmd-textarea');a.parentElement.style.height='180px';return true;})()")
         evaluate("window.columnEvents=0;a.addEventListener('input',()=>columnEvents++)")
         fill('abc123\ndef456\nghi789')
         drag(3,0,6,2)

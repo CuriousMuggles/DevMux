@@ -18,8 +18,9 @@ sys.path.insert(0, str(ROOT))
 import agent_api
 import agent_client
 import agent_mcp
-import relay_app
-import relay_node
+from relay import relay_app
+from relay import relay_node
+from relay import relay_adb
 from shared_terminal import TerminalHub
 from windows_executor import FINAL, OutputBuffer, WindowsService
 from tests.test_relay_app import _Harness, _wait_until, _fake_list_devices, _fake_execute
@@ -102,7 +103,7 @@ def test_buffers_and_control():
 
 
 def test_relay(directory):
-    with patch.object(relay_node, 'list_devices', return_value=([], '')):
+    with patch.object(relay_adb, 'list_devices', return_value=([], '')):
         harness = _Harness(directory, master_local_devices_enabled=False)
         harness.slave.config.allowWindows = False
         harness.start()
@@ -245,7 +246,7 @@ def test_protocol():
 def test_agent_adb(directory):
     import server
     events = []
-    with patch.object(relay_node, 'list_devices', _fake_list_devices), patch.object(relay_node, 'execute', _fake_execute):
+    with patch.object(relay_adb, 'list_devices', _fake_list_devices), patch.object(relay_adb, 'execute', _fake_execute):
         harness = _Harness(directory, master_local_devices_enabled=False)
         harness.start()
         try:
@@ -263,7 +264,7 @@ def test_agent_adb(directory):
             async def exercise():
                 result = await manager.agent.call('adb_exec', {'target':'device:'+key, 'argv':['shell','getprop ro.product.model']})
                 assert result['success'] and 'node-b' in result['output'], result
-                with patch.object(relay_node, 'execute', return_value=relay_node.ExecOutcome(exitCode=7, stdout='失败命令')):
+                with patch.object(relay_adb, 'execute', return_value=relay_adb.ExecOutcome(exitCode=7, stdout='失败命令')):
                     failed = await manager.agent.call('adb_exec', {'target':'device:'+key, 'argv':['shell','false']})
                     assert not failed['success'] and failed['exitCode'] == 7, failed
                 opened = await manager.agent.call('session_open', {'target':'device:'+key})

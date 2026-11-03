@@ -499,7 +499,7 @@ class WindowsService:
 
     def file_path(self, relative, create=False):
         """电脑文件仅在本实例暂存目录内读写，不跟随链接或重解析点。"""
-        import relay_transfer
+        from relay import relay_transfer
         value = str(relative)
         path = Path(value)
         if path.is_absolute() or path.drive or '..' in path.parts or ':' in value:

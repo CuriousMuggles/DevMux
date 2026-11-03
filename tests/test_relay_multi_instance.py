@@ -35,7 +35,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import relay  # noqa: E402
-import relay_app
+from relay import relay_app
 from unittest.mock import patch
 from pathlib import Path
 

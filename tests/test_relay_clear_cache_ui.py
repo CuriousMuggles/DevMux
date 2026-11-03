@@ -17,9 +17,9 @@ ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT))
 from tests import test_ui_e2e as base
 from tests.edge_test_support import EdgeSession
-import relay_app
+from relay import relay_app
 import relay
-import relay_archive
+from relay import relay_archive
 import zipfile
 from tests.test_relay_clear_cache import make_history
 
@@ -30,7 +30,7 @@ SCRIPT = r"""
   const $ = id=>document.getElementById(id);
   const results=[];
   const record=(name,ok)=>{results.push({name,ok:!!ok});if(!ok)throw new Error(name);};
-  await wait(()=>ws && ws.readyState===1);
+  await wait(()=>typeof ws!=='undefined'&&ws.readyState===1);
   $('tools-relay').click();
   await wait(()=>$('relay-config-overlay').style.display==='flex' && state.relay.config);
   const button=$('relay-clear-cache'), outcome=$('relay-clear-cache-result');
@@ -86,7 +86,7 @@ FAIL_SCRIPT = r"""
   const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const wait=async fn=>{for(let i=0;i<200;i++){if(fn())return;await delay(30);}throw new Error('失败界面等待超时');};
   const $=id=>document.getElementById(id);
-  await wait(()=>ws&&ws.readyState===1);
+  await wait(()=>typeof ws!=='undefined'&&ws.readyState===1);
   $('tools-relay').click();await wait(()=>$('relay-config-overlay').style.display==='flex'&&state.relay.config);
   $('relay-clear-cache').click();await wait(()=>$('relay-cache-confirm-overlay').style.display==='flex');
   $('relay-cache-confirm-delete').click();await wait(()=>!$('relay-clear-cache').disabled);
@@ -106,7 +106,7 @@ RESUME_SCRIPT = r"""
   const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const wait=async fn=>{for(let i=0;i<240;i++){if(fn())return;await delay(30);}throw new Error('续扫界面等待超时');};
   const $=id=>document.getElementById(id);
-  await wait(()=>ws&&ws.readyState===1);
+  await wait(()=>typeof ws!=='undefined'&&ws.readyState===1);
   $('tools-relay').click();await wait(()=>$('relay-config-overlay').style.display==='flex'&&state.relay.config);
   $('relay-clear-cache').click();await wait(()=>$('relay-cache-confirm-overlay').style.display==='flex');
   $('relay-cache-confirm-delete').click();await wait(()=>!$('relay-clear-cache').disabled);
@@ -189,7 +189,7 @@ def run():
                 assert (share/'pool/a/one').read_bytes()==b'cache'
                 assert manager.relay.config.enabled
                 assert relay_app.load_config(str(config)).enabled
-                import relay_cache
+                from relay import relay_cache
                 batched=[make_history(share,peer='cache-ui',session=f'sess-batch-{n}') for n in range(4)]
                 with patch.object(relay_cache,'SCAN_LIMIT',1):
                     partial=base._cdp_eval(target,url,RESUME_SCRIPT)

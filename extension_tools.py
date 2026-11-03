@@ -1,11 +1,6 @@
 """扩展工具注册与本机/中转选路：固定接口、目标权限由执行端裁决。"""
+from tool_errors import RemoteToolError  # noqa: F401  实现已下沉，保留旧调用路径
 import relay
-
-
-class RemoteToolError(RuntimeError):
-    def __init__(self, message, uncertain=False):
-        super().__init__(message)
-        self.operation_uncertain = uncertain
 
 
 class ExtensionTools:

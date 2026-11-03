@@ -55,3 +55,11 @@ docs/报告/
 
 devmux-data/
 .worktrees/
+
+# 测试起真实窗口 / 假设备时落下的临时目录（正常应在系统临时目录，跑错 cwd 时留在仓库内）
+DevMux-ui-computer-*/
+adb-agent-test-*/
+serial-ui-*/
+e2e-*/
+# agent CLI 能力查询留下的请求文件（cap-*.json / cmd-ports.json）
+.scratch/

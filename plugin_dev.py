@@ -4,7 +4,6 @@ import ast
 import json
 from pathlib import Path
 import secrets
-import shutil
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

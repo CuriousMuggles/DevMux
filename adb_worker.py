@@ -2,6 +2,7 @@
 ADB Worker — device polling + ConPTY terminal lifecycle.
 Runs in the main thread (coordinated by server.py via asyncio loop executor).
 """
+from device_key import make_key  # noqa: F401  实现已下沉，保留旧调用路径
 import subprocess
 import threading
 import time
@@ -191,11 +192,6 @@ def get_all_devices() -> List[dict]:
     return devices
 
 
-def make_key(dev: dict) -> str:
-    tid = dev.get('transportId')
-    if tid is not None:
-        return f"{dev['serial']}:tid={tid}"
-    return dev['serial']
 
 
 def _pty_child_handle(pid):

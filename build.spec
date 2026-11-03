@@ -56,6 +56,8 @@ a = Analysis(
     hiddenimports=[
         'plugin_devices',
         'plugin_sdk',
+        # 只在打 usb-relay 插件时延迟导入，静态分析看不到；缺了会在打包插件时 ImportError。
+        'relay.relay_probe_build',
         'mijiaAPI', 'qrcode.image.svg', 'Crypto.Cipher.ARC4', 'tzlocal',
         # pywebview internals
         'webview',

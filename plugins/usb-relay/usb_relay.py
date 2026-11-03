@@ -94,7 +94,7 @@ class USBRelayService:
             helper = workspace / 'build' / 'relay-probe' / 'RelayProbe.exe'
             library_dir = workspace / 'vendor' / 'usb-relay' / 'bin'
         if not helper.is_file():
-            raise RuntimeError('缺少继电器辅助程序；源码运行请先执行 python -B relay_probe_build.py')
+            raise RuntimeError('缺少继电器辅助程序；源码运行请先执行 python -B -m relay.relay_probe_build')
         argv = [str(helper), action, str(library_dir)]
         if action == 'status':
             argv.append(serial)

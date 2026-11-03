@@ -10,8 +10,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
 import adb_worker
-import relay_app
-import relay_session
+from relay import relay_app
+from relay import relay_session
 import server
 
 def run():

@@ -1,4 +1,5 @@
 """闲置清理专项：临时目录、真实文件/节点，无现场设备操作。"""
+from datetime import datetime, timedelta, timezone
 import asyncio
 import json
 import os
@@ -15,9 +16,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import relay
-import relay_app
-import relay_archive
-import relay_cache
+from relay import relay_app
+from relay import relay_archive
+from relay import relay_cache
 from tests.test_relay_clear_cache import make_history
 
 
@@ -106,7 +107,7 @@ class CacheTests(unittest.TestCase):
         request.reqId = 'oldrequest'
         expired = self.file('requests/slave/r-expired.json',request.to_dict())
         request.reqId = 'longrequest'
-        request.expiresAt = request.createdAt[:0] + (relay.datetime.now(relay.timezone.utc)+relay.timedelta(days=1)).isoformat()
+        request.expiresAt = request.createdAt[:0] + (datetime.now(timezone.utc)+timedelta(days=1)).isoformat()
         ongoing = self.file('requests/slave/r-long.json',request.to_dict())
         request.reqId='busyrequest';request.expiresAt=relay.new_request('exec','master',ttl_s=30).expiresAt
         busy=self.file('requests/slave/r-busy.json',request.to_dict())
@@ -304,7 +305,7 @@ class CacheTests(unittest.TestCase):
 
     def test_win32_uncached_stat_exposes_real_file_id(self):
         if os.name!='nt':self.skipTest('Windows原生文件信息')
-        import relay_file_io
+        from relay import relay_file_io
         path=self.file('sample.txt')
         native=relay_file_io._stat_uncached(str(path))
         self.assertGreater(native.st_ino,0)

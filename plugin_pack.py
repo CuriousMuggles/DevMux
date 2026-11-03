@@ -20,7 +20,7 @@ def pack(source, output):
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         if manifest['id'] == 'usb-relay':
-            from relay_probe_build import build_relay_probe
+            from relay.relay_probe_build import build_relay_probe
             workspace = Path(__file__).resolve().parent
             archive.write(build_relay_probe(str(workspace)), 'native/RelayProbe.exe')
             archive.write(workspace / 'vendor/usb-relay/bin/usb_relay_device.dll', 'native/usb_relay_device.dll')

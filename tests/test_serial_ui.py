@@ -37,7 +37,7 @@ SCRIPT = r"""
   const wait=async fn=>{step++;for(let i=0;i<300;i++){if(fn())return;await sleep(30);}throw Error('串口界面等待超时，步骤 '+step+'；'+document.getElementById('serial-select-status')?.textContent+'；'+document.querySelector('.serial-status')?.textContent);};
   const assert=(x,m)=>{if(!x)throw Error(m);};
   const el=id=>document.getElementById(id);
-  await wait(()=>window.SerialIntegration && ws.readyState===1);
+  await wait(()=>window.SerialIntegration && typeof ws!=='undefined' && ws.readyState===1);
   assert(!el('tools-shell'),'旧工具菜单入口仍存在');
   document.querySelector('[data-tab="settings"]').click();
   el('window-tab').click();
@@ -173,7 +173,7 @@ def run(check_only=None):
                   await wait(()=>SerialIntegration.windows.size===1);
                   const result=await callWS('restart-server');
                   await wait(()=>[...SerialIntegration.windows.values()][0].term.options.disableStdin);
-                  await wait(()=>ws.readyState===1);
+                  await wait(()=>typeof ws!=='undefined'&&ws.readyState===1);
                   await [...SerialIntegration.windows.values()][0].close();
                   return {ok:result.success};
                 })()""")

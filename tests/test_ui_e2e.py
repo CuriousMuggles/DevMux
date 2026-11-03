@@ -638,7 +638,7 @@ def _check_slave_terminal_mirror(ws_url, url, manager):
     """PTY输出经过真实WS与xterm显示，镜像不写入从机本地shell。"""
     from unittest.mock import patch
     import adb_worker
-    import relay_app
+    from relay import relay_app
     prepared = _cdp_eval(ws_url, url, """(() => {
       const key = 'UI-TEST-1:tid=1';
       if (!state.terminals[key]) createTerminalPanel(key, {serial:'UI-TEST-1',transportId:'1',state:'device'});

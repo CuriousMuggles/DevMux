@@ -5,7 +5,8 @@ import subprocess
 
 
 def build_relay_probe(root=None):
-    root = Path(root or Path(__file__).resolve().parent)
+    # 包化后本文件在 relay/ 下，源码与产物都相对仓库根
+    root = Path(root or Path(__file__).resolve().parent.parent)
     source = root / 'native' / 'RelayProbe.cs'
     output = root / 'build' / 'relay-probe' / 'RelayProbe.exe'
     compiler = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'Microsoft.NET/Framework/v4.0.30319/csc.exe'

@@ -112,7 +112,13 @@
       this.el('close').addEventListener('click', () => this.close());
       this.el('browse').addEventListener('click', () => this.guard(async () => {
         const result = await this.pick('directory');
-        if (result.success && result.path) {
+        if (!result.success) {
+          // 宿主侧失败（如原生对话框异常）必须显式报错：静默返回会让按钮看起来没反应。
+          // 用户主动取消时没有 output，保持安静即可。
+          if (result.output) throw new Error(result.output);
+          return;
+        }
+        if (result.path) {
           this.el('directory').value = result.path;
           this.directoryDirty = true;
           this.toolChanged();

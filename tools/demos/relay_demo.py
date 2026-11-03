@@ -8,10 +8,10 @@
 
 用法::
 
-    python relay_demo.py                          # 自动挑选两台在线设备
-    python relay_demo.py --master de47c9b2 --slave f62ca3df
-    python relay_demo.py --root D:\\relay         # 指定共享目录（默认临时目录）
-    python relay_demo.py --keep-going             # 演示结束后不停止节点，便于手工观察
+    python tools/demos/relay_demo.py                          # 自动挑选两台在线设备
+    python tools/demos/relay_demo.py --master de47c9b2 --slave f62ca3df
+    python tools/demos/relay_demo.py --root D:\\relay         # 指定共享目录（默认临时目录）
+    python tools/demos/relay_demo.py --keep-going             # 演示结束后不停止节点，便于手工观察
 
 这是**演示脚本**，不是产品入口：真机跨机部署时两个应用各自跑自己的实例
 （``relay_node.RelayNode``），共享目录指向同一个中转服务器。
@@ -25,8 +25,11 @@ import sys
 import tempfile
 import time
 
+# 脚本位于 tools/，项目模块在上一层；直接 `python tools/demos/relay_demo.py` 时补 sys.path。
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import relay
-import relay_node
+from relay import relay_node
 
 WIDTH = 68
 

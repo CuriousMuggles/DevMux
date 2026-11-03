@@ -48,7 +48,7 @@ def run():
             manager.desktop_terminals.bind_native(SimpleNamespace(create_window=create))
             def verify():
                 try:
-                    wait(lambda:main.evaluate_js("typeof SerialIntegration!=='undefined'&&ws?.readyState===1"))
+                    wait(lambda:main.evaluate_js("typeof SerialIntegration!=='undefined'&&typeof ws!=='undefined'&&ws.readyState===1"))
                     main.evaluate_js("document.getElementById('window-serial').click()")
                     wait(lambda:main.evaluate_js("!document.getElementById('serial-open').disabled"))
                     main.evaluate_js("document.getElementById('serial-open').click()")

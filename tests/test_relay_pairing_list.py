@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
-from relay_node import RelayNode
+from relay.relay_node import RelayNode
 
 
 def run():

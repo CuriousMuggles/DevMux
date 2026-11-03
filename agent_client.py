@@ -14,7 +14,7 @@ def runtime_directory():
 
 
 def instances():
-    import relay_app
+    from relay import relay_app
     records = []
     for path in runtime_directory().glob('*.json'):
         try:

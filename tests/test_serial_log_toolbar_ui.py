@@ -50,7 +50,7 @@ def check(endpoint, manager):
             wait(lambda:evaluate("document.getElementById('desktop-message')?.hidden===true",sid))
             return sid
         command('Runtime.enable')
-        wait(lambda:evaluate("typeof SerialIntegration!=='undefined'&&ws?.readyState===1"))
+        wait(lambda:evaluate("typeof SerialIntegration!=='undefined'&&typeof ws!=='undefined'&&ws.readyState===1"))
         evaluate("document.getElementById('window-serial').click()")
         wait(lambda:evaluate("!document.getElementById('serial-open').disabled"))
         evaluate("document.getElementById('serial-open').click()")

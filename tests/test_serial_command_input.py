@@ -46,7 +46,7 @@ SCRIPT = r"""
 (async()=>{
  const wait=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw Error('命令输入等待超时');};
  const assert=(x,m)=>{if(!x)throw Error(m);};
- await wait(()=>window.SerialIntegration&&ws.readyState===1);
+ await wait(()=>window.SerialIntegration&&typeof ws!=='undefined'&&ws.readyState===1);
  document.getElementById('window-serial').click();await wait(()=>!document.getElementById('serial-open').disabled);
  document.getElementById('serial-open').click();await wait(()=>SerialIntegration.windows.size===1);
  const w=[...SerialIntegration.windows.values()][0], p=w.panel, c=p.querySelector('.terminal-cmd-textarea');

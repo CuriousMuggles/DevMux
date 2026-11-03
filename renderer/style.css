@@ -21,6 +21,16 @@
   --device-bar-height: 34px;
   --toolbar-height: 40px;
   --status-height: 26px;
+  /* 层叠顺序：新增浮层从这里挑层级，不要写裸数字。
+     数值与改造前逐项一致，本次只收敛写法，不改变任何现有层级关系。 */
+  --z-cell-handle: 1;          /* 单元格内拖拽手柄，只在所在层叠上下文内比较 */
+  --z-cell-menu: 20;           /* 单元格内的绝对定位菜单（如本机目录选择） */
+  --z-diagnostic: 5000;        /* ADB 诊断全屏遮罩 */
+  --z-overlay: 9999;           /* 顶部菜单下拉、编辑遮罩、toast */
+  --z-popup: 10000;            /* 右键菜单、设备浏览器 */
+  --z-inline-editor: 10001;    /* 应用内远端文本编辑器 */
+  --z-terminal-find: 10002;    /* 终端查找面板 */
+  --z-column-overlay: 2147483646; /* 列编辑覆盖层，必须盖住一切 */
 }
 
 html, body {
@@ -78,7 +88,7 @@ html, body {
   border: 1px solid var(--border);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-  z-index: 9999;
+  z-index: var(--z-overlay);
   overflow: hidden;
 }
 .tab-dropdown-item {
@@ -106,7 +116,7 @@ html, body {
   position: fixed;
   top: calc(var(--tab-height) + var(--device-bar-height) + 12px);
   right: 18px;
-  z-index: 10002;
+  z-index: var(--z-terminal-find);
   width: min(380px, calc(100vw - 28px));
   padding: 13px;
   border: 1px solid var(--border);
@@ -450,7 +460,7 @@ html, body {
   cursor: ns-resize;
   background: var(--border);
   position: relative;
-  z-index: 1;
+  z-index: var(--z-cell-handle);
   transition: background 0.12s;
 }
 
@@ -854,7 +864,7 @@ html, body {
 /* Context menu */
 .cmd-context-menu {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popup);
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -877,7 +887,7 @@ html, body {
 .cmd-edit-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-overlay);
   background: rgba(0,0,0,0.5);
   display: flex;
   align-items: center;
@@ -903,7 +913,7 @@ html, body {
 .inline-edit-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10001;
+  z-index: var(--z-inline-editor);
   background: rgba(0,0,0,0.58);
   display: flex;
   align-items: center;
@@ -1170,7 +1180,7 @@ html, body {
 
 .fo-local-picker-menu {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-cell-menu);
   top: calc(100% + 4px);
   left: 0;
   min-width: 108px;
@@ -1464,7 +1474,7 @@ html, body {
   position: fixed;
   bottom: 28px;
   right: 12px;
-  z-index: 9999;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column-reverse;
   gap: 6px;
@@ -1579,7 +1589,7 @@ html, body {
 .device-browser {
   display: none;
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popup);
   min-width: 160px;
   width: 420px;
   background: #11111b;
@@ -1662,7 +1672,7 @@ html, body {
 .diagnostic-overlay {
   position: fixed;
   inset: 0;
-  z-index: 5000;
+  z-index: var(--z-diagnostic);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2194,4 +2204,4 @@ body {
 
 /* 列编辑按逻辑行定位，长命令使用水平滚动；禁用连字保证列宽一致。 */
 .terminal-cmd-textarea { white-space: pre; overflow: auto; tab-size: 4; font-kerning: none; font-variant-ligatures: none; }
-.command-column-overlay { position: fixed; z-index: 2147483646; pointer-events: none; }
+.command-column-overlay { position: fixed; z-index: var(--z-column-overlay); pointer-events: none; }

@@ -1,2 +1,3 @@
 -r requirements.txt
-pyinstaller
+# PyInstaller 的版本会改变打包脚本行为与产物结构，必须与发布时一致。
+pyinstaller==6.21.0

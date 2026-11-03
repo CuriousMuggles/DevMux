@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import abc
 import os
-import relay_file_io
+from . import relay_file_io
 import re
 import time
 import uuid

@@ -8,15 +8,16 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
-import relay_node
-import relay_transfer
+from relay import relay_store
+from relay import relay_adb
+from relay import relay_transfer
 from tests.test_relay_app import _Harness, _fake_list_devices, _fake_execute, _wait_until
 
 
 def run():
     release = threading.Event()
     try:
-        with tempfile.TemporaryDirectory() as root, patch.object(relay_node, 'list_devices', _fake_list_devices), patch.object(relay_node, 'execute', _fake_execute):
+        with tempfile.TemporaryDirectory() as root, patch.object(relay_adb, 'list_devices', _fake_list_devices), patch.object(relay_adb, 'execute', _fake_execute):
             harness = _Harness(root, master_local_devices_enabled=False)
             harness.start()
             try:
@@ -220,8 +221,8 @@ def run():
                     if ('requests' in text or 'results' in text) and text.endswith('.json'):
                         return None
                     return original_read_json(path, *args, **kwargs)
-                with patch.object(relay, 'list_messages', return_value=[]), \
-                     patch.object(relay, 'read_json', side_effect=hidden_control_json):
+                with patch.object(relay_store, 'list_messages', return_value=[]), \
+                     patch.object(relay_store, 'read_json', side_effect=hidden_control_json):
                     started = time.monotonic()
                     r = controller.remote_list_dir(key, '/data/fast-notification')
                     assert r['success'], r
@@ -271,7 +272,7 @@ def run():
                         entered.set()
                         release.wait(5)
                     return _fake_list_devices(adb_path, **kwargs)
-                with patch.object(relay_node, 'list_devices', slow_devices):
+                with patch.object(relay_adb, 'list_devices', slow_devices):
                     assert entered.wait(3), '未进入慢枚举'
                     started = time.monotonic()
                     r = controller.remote_list_dir(key, '/data/空 格')

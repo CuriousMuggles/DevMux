@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import relay
-import relay_file_io
+from relay import relay_store
+from relay import relay_heartbeat
+from relay import relay_file_io
 
 
 def run():
@@ -51,7 +53,7 @@ def run():
             native_read = relay.read_json
             def stale_legacy(path):
                 return cached if str(path).endswith('slave.json') else native_read(path)
-            with patch.object(relay, 'read_json', side_effect=stale_legacy):
+            with patch.object(relay_store, 'read_json', side_effect=stale_legacy):
                 relay.write_heartbeat(str(peers_dir), fresh, snapshot=True)
                 check('稳定路径返回旧缓存时仍通过唯一快照发现第二台设备',
                       len(relay.read_peers(str(peers_dir))['slave'].devices) == 2)
@@ -74,11 +76,11 @@ def run():
                     records.append(SimpleNamespace(name='slave.beat-111-missing.beat',
                                                    path=str(peers_dir / 'missing.beat'), stat=missing_stat))
                 yield iter(records)
-            with patch.object(relay.os, 'scandir', side_effect=stale_scan):
+            with patch.object(os, 'scandir', side_effect=stale_scan):
                 relay.write_heartbeat(str(peers_dir), fresh, snapshot=True)
                 check('SMB目录缓存含已删除快照时心跳发布与刷新不中断',
                       relay.read_peers(str(peers_dir))['slave'].devices == fresh.devices)
-            with patch.object(relay, 'read_json', wraps=relay.read_json) as reads:
+            with patch.object(relay_store, 'read_json', wraps=relay_store.read_json) as reads:
                 relay.read_peers(str(peers_dir))
                 check('同一节点只读最新心跳，不逐一打开历史快照', reads.call_count == 1)
             @contextmanager
@@ -87,7 +89,7 @@ def run():
                     records = list(entries)
                 yield iter([SimpleNamespace(name=e.name, path=e.path,
                     stat=lambda e=e: SimpleNamespace(st_mtime=e.stat().st_mtime - 20)) for e in records])
-            with patch.object(relay.os, 'scandir', side_effect=old_attributes), \
+            with patch.object(os, 'scandir', side_effect=old_attributes), \
                  patch.object(relay_file_io, 'is_remote', return_value=True):
                 native_beat = relay.read_peers(str(peers_dir))['slave']
                 check('目录元数据滞后20秒时仍从原生句柄取得最新心跳',
@@ -117,7 +119,7 @@ def run():
                 if str(path) == str(pulse_path):
                     return SimpleNamespace(st_mtime=info.st_mtime, st_size=1)
                 return info
-            with patch.object(relay, 'read_json', return_value=stable_data), \
+            with patch.object(relay_store, 'read_json', return_value=stable_data), \
                     patch.object(relay_file_io, 'stat', side_effect=stale_pulse_size):
                 actual = relay.read_peers(str(pulse_dir))['pulse-slave']
             check('稳定JSON和目录没有更新且大小属性陈旧时，追加心跳仍读取最新完整记录',
@@ -165,7 +167,7 @@ def run():
             relay.write_heartbeat(str(pulse_dir), dead2, snapshot=True, pulse_only=True)
             dead1_path = Path(relay.heartbeat_pulse_path(str(pulse_dir), dead1))
             dead2_path = Path(relay.heartbeat_pulse_path(str(pulse_dir), dead2))
-            with patch.object(relay, '_pid_alive', return_value=False):
+            with patch.object(relay_heartbeat, '_pid_alive', return_value=False):
                 removed = relay.purge_dead_pulses(str(pulse_dir), 'pulse-clean',
                                                   self_pid=os.getpid())
             check('purge_dead_pulses 回收异常退出遗留的 pulse',
@@ -173,7 +175,7 @@ def run():
             alive = relay.PeerHeartbeat(peerId='pulse-clean', role='slave', pid=3333,
                 nodeId='pulse-node', startedAt='2026-10-11T00:00:00+08:00')
             relay.write_heartbeat(str(pulse_dir), alive, snapshot=True, pulse_only=True)
-            with patch.object(relay, '_pid_alive', return_value=True):
+            with patch.object(relay_heartbeat, '_pid_alive', return_value=True):
                 removed = relay.purge_dead_pulses(str(pulse_dir), 'pulse-clean',
                                                   self_pid=os.getpid())
             check('purge_dead_pulses 不删仍在运行的进程 pulse', len(removed) == 0)

@@ -1,4 +1,5 @@
 """从机终端复用：保留一个PTY，远端订阅输出，控制代次隔离输入。"""
+from device_key import make_key
 import collections
 import queue
 import threading
@@ -252,9 +253,8 @@ class SharedTerminalBackend:
         self.worker = worker
 
     def open(self, device, *, cols, rows, on_output, on_exit):
-        import adb_worker
         hub = self.worker().terminal_hub
-        lease = hub.attach(adb_worker.make_key(device), on_output, on_exit)
+        lease = hub.attach(make_key(device), on_output, on_exit)
         hub.resize(lease.slot['key'], cols, rows, lease)
         return lease
 

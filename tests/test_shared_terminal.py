@@ -1,6 +1,11 @@
 """共享shell的单方控制、代次隔离、断线保留及真实中转往返。"""
 import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from relay import relay_store  # noqa: E402
 import tempfile
 import threading
 import time
@@ -160,7 +165,7 @@ class SharedTests(unittest.TestCase):
         self.assertEqual(sent[0]['type'], 'terminal-switch')
 
     def test_control_publications_cannot_finish_in_reverse_order(self):
-        import relay_session
+        from relay import relay_session
         session = relay_session.RemotePtySession.__new__(relay_session.RemotePtySession)
         session._meta_write_lock = threading.Lock()
         session._alive = True
@@ -269,7 +274,7 @@ class SharedTests(unittest.TestCase):
                     original_read_json = relay.read_json
                     def cached_read(path, *args, **kwargs):
                         return stale_meta if str(path) == channel.meta_path else original_read_json(path, *args, **kwargs)
-                    with patch.object(relay, 'read_json', cached_read):
+                    with patch.object(relay_store, 'read_json', cached_read):
                         Path(channel.meta_path).unlink()
                         self.assertTrue(_wait_until(lambda: any(s['opened'] and s['streamId'] != orphan_stream
                                                               for s in harness.master.sessions_snapshot()), 16))

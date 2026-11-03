@@ -215,7 +215,7 @@ def check(endpoint, manager):
             _cdp_eval(endpoint,'','ws.close(); true')
             from tests.test_serial_terminal import wait
             wait(lambda:transfer.file.closed and wire.closed)
-            _cdp_eval(endpoint,'',r'''(async()=>{for(let i=0;i<500;i++){if(ws.readyState===1)return true;await new Promise(r=>setTimeout(r,10));}throw Error('连接未恢复');})()''')
+            _cdp_eval(endpoint,'',r'''(async()=>{for(let i=0;i<500;i++){if(typeof ws!=='undefined'&&ws.readyState===1)return true;await new Promise(r=>setTimeout(r,10));}throw Error('连接未恢复');})()''')
             print('  [PASS] 串口优化Edge：波特率/自定义、指令持久化/编辑/文本与HEX、XMODEM35KB发送/1K接收/原生保存/取消/断连回收')
         finally:
             for task in peers:

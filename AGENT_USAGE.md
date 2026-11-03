@@ -1,6 +1,6 @@
 # DevMux Agent 接入与电脑 PowerShell
 
-人工操作先读随 Windows ZIP 提供的 [使用说明](使用说明.md)。使用 MCP 时，下载同一 Release 的 `DevMux-3.1.4-source.zip`，解压后安装 `requirements.txt`，注册其中 `agent_mcp.py` 的绝对路径。源码客户端连接已运行 EXE，不要另启动 server.py；原 agent_cli.py/agent_mcp.py 有项目传递导入，不能单独复制。旧版手工生成脚本仅覆盖旧工具表，新增插件管理使用本版源码入口。
+人工操作先读随 Windows ZIP 提供的 [使用说明](使用说明.md)。使用 MCP 时，下载同一 Release 的 `DevMux-3.1.5-source.zip`，解压后安装 `requirements.txt`，注册其中 `agent_mcp.py` 的绝对路径。源码客户端连接已运行 EXE，不要另启动 server.py；原 agent_cli.py/agent_mcp.py 有项目传递导入，不能单独复制。旧版手工生成脚本仅覆盖旧工具表，新增插件管理使用本版源码入口。
 
 本地 Agent 通过 JSON CLI 或 MCP stdio 连接已运行的 DevMux。两者共用应用的设备列表、ADB shell 和中转连接，不启动第二套 ADB 轮询。电脑 PowerShell 和设备 ADB 权限独立。
 
@@ -165,7 +165,7 @@ Agent 会话 ID 由常驻实例持有，可跨 CLI 调用；应用重启后失�
 
 通过 `extension_capabilities / extension_call` 使用 `tool=serial`；支持 ports/open/read/write/control/status/close，默认921600，共用字节输出，GUI输入优先。read 返回原始base64和字节游标，write支持text/hex/base64。完整参数、控制代次、requestId防重复和示例见 [串口使用说明](docs/使用说明/串口使用说明.md)。XMODEM支持发送/接收，使用xmodem-start/upload/run/status/download/cancel；参数与有限重试、独占和填充边界见同一说明。
 
-## 本机插件管理（3.1.4）
+## 本机插件管理（3.1.4 版本引入，3.1.5 沿用）
 
 MCP/CLI 工具 `plugins_manage` 复用认证 Agent 连接和插件管理器。无需开启 PowerShell 权限。只支持本机，不接受 target，不修改远程授权策略。远程扩展发现与调用继续走既有已验证连接及执行端权限；本工具不提供远程安装或启停。
 

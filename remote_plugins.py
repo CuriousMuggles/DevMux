@@ -2,7 +2,6 @@
 import base64
 import hashlib
 import json
-from pathlib import Path
 import re
 from extension_tools import remote_call
 

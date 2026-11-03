@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import relay          # noqa: E402
-import relay_carrier  # noqa: E402
+from relay import relay_carrier  # noqa: E402
 
 
 def _carrier(root: str, peer_id: str = 'pc-a') -> relay_carrier.SharedFolderCarrier:

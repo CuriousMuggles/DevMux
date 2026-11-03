@@ -12,8 +12,11 @@ import zipfile
 from collections import Counter, deque
 from pathlib import Path
 
-import relay
-import relay_file_io
+from . import relay_file_io
+from .relay_maintenance import _cache_link, validate_cache_root
+from .relay_pool import resolve_pool_root
+from .relay_protocol import check_peer_id, valid_peer_id
+from .relay_store import _epoch_ms
 
 SETTLE_S = 30
 PROTOCOL_IDLE_S = 600
@@ -29,9 +32,19 @@ class ChangedFile(Exception):
     """枚举后文件发生变化，保留而不是强行删除。"""
 
 
+def clear_cache_root(root: str, protected_paths=(), *, peer_id: str, pool_id: str = '', active_requests=None, scan_state=None) -> dict:
+    """人工清理共享根内可确认闲置的缓存，保留活动文件和最小去重依据。
+
+    公开入口与实现同住本模块：原先它放在 relay.py 里、靠函数内 ``import``
+    回指这里，形成 relay ↔ relay_cache 的环；搬过来后依赖方向单向。
+    """
+    return clear_idle_cache(root, protected_paths, peer_id=peer_id, pool_id=pool_id,
+                            active_requests=active_requests, scan_state=scan_state)
+
+
 def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_requests=None, scan_state=None):
-    target = Path(relay.validate_cache_root(root, protected_paths))
-    peer = relay.check_peer_id(peer_id, '本实例标识')
+    target = Path(validate_cache_root(root, protected_paths))
+    peer = check_peer_id(peer_id, '本实例标识')
     result = dict(root=str(target), scope='idle-cache', success=True, removedFiles=0,
                   removedDirs=0, trimmedFiles=0, scanned=0, keptFiles=0,
                   scannedBytes=0, freedBytes=0, keptBytes=0, errorCount=0,
@@ -52,7 +65,7 @@ def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_re
     def guard(path):
         current = Path(path)
         while True:
-            if relay._cache_link(str(current)):
+            if _cache_link(str(current)):
                 raise OSError('清理路径包含链接，已保留')
             if current == target:
                 return
@@ -60,7 +73,7 @@ def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_re
                 raise OSError('清理路径越界')
             current = current.parent
 
-    clock_path = Path(relay.resolve_pool_root(str(target), pool_id)) / 'peers' / (peer + '.json')
+    clock_path = Path(resolve_pool_root(str(target), pool_id)) / 'peers' / (peer + '.json')
     try:
         guard(clock_path)
         reference = relay_file_io.stat(str(clock_path)).st_mtime
@@ -262,7 +275,7 @@ def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_re
             return
         if slot == 'archive' and owner and len(relative) == 5 and relative[1] == 'transfers':
             source, transfer_id = relative[2:4]
-            if (relay.valid_peer_id(source) and re.fullmatch(r'[0-9a-f]{32}', transfer_id)
+            if (valid_peer_id(source) and re.fullmatch(r'[0-9a-f]{32}', transfer_id)
                     and path.name in {'upload.zip', 'download.zip', 'upload.partial', 'download.partial'}):
                 if (old(info, PROTOCOL_IDLE_S) and owner_idle(deployment, owner)
                         and owner_idle(deployment, source)):
@@ -324,8 +337,8 @@ def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_re
                 keep(path, info, '在途请求')
                 return
             if data.get('kind') and path.name.startswith('r-') and slot in {'requests', 'archive'}:
-                ttl = (relay._epoch_ms(data.get('expiresAt')) - relay._epoch_ms(data.get('createdAt'))) / 1000
-                if ttl > 0 and relay._epoch_ms(data.get('createdAt')) > 0 and old(info, ttl + PROTOCOL_IDLE_S):
+                ttl = (_epoch_ms(data.get('expiresAt')) - _epoch_ms(data.get('createdAt'))) / 1000
+                if ttl > 0 and _epoch_ms(data.get('createdAt')) > 0 and old(info, ttl + PROTOCOL_IDLE_S):
                     if not busy(req_id):
                         delete(path, info)
                         return
@@ -381,8 +394,8 @@ def clear_idle_cache(root, protected_paths=(), *, peer_id, pool_id='', active_re
             guard(pool)
             with os.scandir(pool) as entries:
                 deployments.extend(Path(entry.path) for entry in entries
-                    if relay.valid_peer_id(entry.name) and entry.is_dir(follow_symlinks=False)
-                    and not relay._cache_link(entry.path))
+                    if valid_peer_id(entry.name) and entry.is_dir(follow_symlinks=False)
+                    and not _cache_link(entry.path))
         for deployment in deployments:
             for slot in ('archive', 'streams', 'requests', 'results', 'peers'):
                 pending.append(('dir', deployment / slot, deployment, slot, (), ''))

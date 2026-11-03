@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 import adb_pull
-import relay_transfer
+from relay import relay_transfer
 
 class PullTests(unittest.TestCase):
     def setUp(self):

@@ -9,8 +9,8 @@ class RelayJournalToastTests(unittest.TestCase):
     def test_deduplication_and_expiry(self):
         js = r"""
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
-const source = fs.readFileSync('renderer/app.js', 'utf8');
-const code = source.slice(source.indexOf('function showToast('), source.indexOf('const FILE_HISTORY_KEY', source.indexOf('function showToast(')));
+const source = fs.readFileSync('renderer/notify.js', 'utf8');
+const code = source.slice(source.indexOf('function showToast('));
 const container = {children:[], appendChild(x){this.children.push(x);x.parentNode=this;}, removeChild(x){this.children.splice(this.children.indexOf(x),1);x.parentNode=null;}};
 const timers=[];
 const context={document:{getElementById:()=>container,createElement:()=>({dataset:{}, body:{}, close:{addEventListener(){}}, set innerHTML(v){this.html=v}, querySelector(q){return q==='.toast-body'?this.body:this.close;}})},setTimeout:f=>timers.push(f)};

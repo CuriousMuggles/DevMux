@@ -12,8 +12,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import relay
-import relay_app
-from relay_config_store import ConfigStore
+from relay import relay_app
+from relay.relay_config_store import ConfigStore
 from serial_terminal import SerialService
 from usb_relay import USBRelayService
 from db_flash_extension import DBFlashExtension
@@ -102,7 +102,7 @@ class UnifiedConfigTests(unittest.TestCase):
         pairs = relay.PairingStore(str(self.root/'missing.json'), storage=storage)
         pairs.items()
         before = self.path.read_bytes()
-        with patch('relay_config_store.os.replace', side_effect=OSError('拒绝写入')):
+        with patch('relay.relay_config_store.os.replace', side_effect=OSError('拒绝写入')):
             with self.assertRaises(OSError):
                 pairs.confirm('master-node', peer_id='master')
         self.assertFalse(pairs.is_paired('master-node'))
@@ -232,7 +232,7 @@ class UnifiedConfigTests(unittest.TestCase):
             self.section('pairings', 'node-slave', source).read()
         self.assertEqual(before, self.path.read_bytes())
         source.write_text('{"schema": 1, "pairs": {}}', encoding='utf-8')
-        with patch('relay_config_store.os.replace', side_effect=OSError('拒绝写入')):
+        with patch('relay.relay_config_store.os.replace', side_effect=OSError('拒绝写入')):
             with self.assertRaises(OSError):
                 self.section('pairings', 'node-slave', source).read()
         self.assertEqual(before, self.path.read_bytes())

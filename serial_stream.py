@@ -1,4 +1,5 @@
 """串口持续流：字节与游标无损，逐帧授权，输入回执不走请求目录。"""
+from tool_errors import RemoteToolError
 import base64
 import json
 import threading
@@ -178,7 +179,6 @@ class MasterSerialStream:
                 'serialStreamProtocol':1,'inputUncertain':self.uncertain}
 
     def send(self,action,args):
-        from extension_tools import RemoteToolError
         with self.write_lock:
             self.check()
             if self.meta.get('closed') or self.meta['state']!='running':

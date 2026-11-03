@@ -1,11 +1,11 @@
 """Agent 和 UI 共用的工具入口，复用已有 ADB 会话和文件传输。"""
-import asyncio
 import os
 import threading
 import time
 import uuid
 
-import relay_node
+from relay import relay_adb
+from relay import relay_node
 from windows_executor import OutputBuffer
 
 
@@ -288,7 +288,7 @@ class AgentAPI:
                     if not self.manager.relay.config.allowWindows:
                         raise PermissionError('本机未允许 Windows PowerShell')
                     def copy():
-                        import relay_transfer
+                        from relay import relay_transfer
                         from pathlib import Path
                         if args['direction'] == 'push':
                             paths = [Path(value) for value in args['paths']]
@@ -327,7 +327,7 @@ class AgentAPI:
                 error=result.error, truncated=result.truncated, requestId=result.reqId,
                 exitCodeAvailable=result.extra.get('exitCodeAvailable', result.exitCode is not None),
                 target=device['target'], status=result.status)
-        outcome = await self.manager._run_blocking(relay_node.execute, self.manager.relay.adb_path,
+        outcome = await self.manager._run_blocking(relay_adb.execute, self.manager.relay.adb_path,
                         device['device'], argv, timeout=args.get('timeout', 30))
         return dict(success=outcome.exitCode == 0 and not outcome.error, **vars(outcome))
 

@@ -39,6 +39,8 @@ TESTS = [
     ('Extension Tool Selection', 'tests.test_extension_tool_selection'),
     ('Syntax Check',    'tests.test_syntax'),
     ('Module Imports',  'tests.test_imports'),
+    ('Undefined Names', 'tests.test_undefined_names'),
+    ('WS Message Resilience', 'tests.test_ws_resilience'),
     ('Logging',         'tests.test_logging'),
     ('Logging Persistent Paths', 'tests.test_logging_paths'),
     ('ADB Devices',     'tests.test_devices'),

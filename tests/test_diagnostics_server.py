@@ -18,10 +18,12 @@ class _FakeWS:
 
 
 def run() -> bool:
+    import adb_service
     import diagnostics
     import server
 
-    old_runner = server.ADBDiagnosticRunner
+    # 诊断执行体在 adb_service 里，打桩要打在真正读取该名字的模块上。
+    old_runner = adb_service.ADBDiagnosticRunner
 
     class FakeRunner:
         def __init__(self, _adb_path, _creationflags, _logger, progress):
@@ -50,7 +52,7 @@ def run() -> bool:
         return ws.messages, manager._diagnostic_session
 
     try:
-        server.ADBDiagnosticRunner = FakeRunner
+        adb_service.ADBDiagnosticRunner = FakeRunner
         messages, active_session = asyncio.run(exercise())
         payloads = [__import__('json').loads(message) for message in messages]
         has_progress = any(payload.get('type') == 'diagnostic-progress' for payload in payloads)
@@ -59,7 +61,7 @@ def run() -> bool:
         print(f'  [{"PASS" if passed else "FAIL"}] 诊断异步返回进度和结构化结果')
         return bool(passed)
     finally:
-        server.ADBDiagnosticRunner = old_runner
+        adb_service.ADBDiagnosticRunner = old_runner
 
 
 if __name__ == '__main__':

@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import relay          # noqa: E402
-import relay_node     # noqa: E402
+from relay import relay_adb
+from relay import relay_node  # noqa: E402
 
 
 # ----------------------------------------------------------------------
@@ -104,10 +105,11 @@ def _fake_popen(command, **kwargs):
 
 
 class _patch:
-    """临时替换 ``relay_node`` 里的可调用对象。
+    """临时替换可调用对象。
 
-    名字可含点（如 ``subprocess.Popen``）—— ``Popen`` 属于被引用的 subprocess
-    模块，不是 relay_node 自己的属性，所以要走点分路径才能替换。
+    名字可含点（如 ``relay_adb.subprocess.Popen``）—— ``Popen`` 属于被引用的
+    subprocess 模块，不是模块自己的属性，所以要走点分路径才能替换。
+    点分路径的首段可以是 ``relay_adb``（adb 执行层），其余按 ``relay_node`` 解析。
     """
 
     def __init__(self, **targets):
@@ -117,8 +119,16 @@ class _patch:
     def __enter__(self):
         for name, value in self._targets.items():
             if '.' in name:
-                owner_name, _, attr = name.partition('.')
-                owner = getattr(relay_node, owner_name)
+                # 逐段下钻：relay_adb.subprocess.Popen -> (relay_adb.subprocess, 'Popen')
+                parts = name.split('.')
+                attr = parts[-1]
+                owner = relay_adb if parts[0] == 'relay_adb' else relay_node
+                for part in parts[1:-1]:
+                    owner = getattr(owner, part)
+            elif hasattr(relay_adb, name):
+                # adb 原语已下沉到 relay_adb，打桩要打在真正读取它的模块上，
+                # 否则补丁不生效、测试会跑真实 adb 而“假通过”。
+                owner, attr = relay_adb, name
             else:
                 owner, attr = relay_node, name
             self._saved.append((owner, attr, getattr(owner, attr)))
@@ -654,7 +664,7 @@ def _check_log_stream(root) -> list:
     checks: list = []
     _EXEC_LOG.clear()
     with _patch(list_devices=_fake_list_devices, execute=_fake_execute,
-                **{'subprocess.Popen': _fake_popen}):
+                **{'relay_adb.subprocess.Popen': _fake_popen}):
         master = _make_node(root, 'pc-a', 'master', 'node-a')
         slave = _make_node(root, 'pc-b', 'slave', 'node-b')
         master.start()

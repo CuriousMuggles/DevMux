@@ -26,8 +26,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import relay  # noqa: E402 - 依赖上面的 sys.path
-import relay_carrier  # noqa: E402
-import relay_node  # noqa: E402
+from relay import relay_carrier  # noqa: E402
+from relay import relay_node  # noqa: E402
 
 FAKE_DEVICES = [{'serial': 'de47c9b2', 'key': 'de47c9b2:tid=104', 'state': 'device'}]
 
@@ -446,7 +446,7 @@ def _check_pool_compat_and_seam(base):
                 checks.append(('channel_root 在模型 A 下恒等于数据根', False,
                                pooled.channel_root('pc-x')))
 
-            source = open(os.path.join(ROOT, 'relay_node.py'), encoding='utf-8').read()
+            source = open(os.path.join(ROOT, 'relay', 'relay_node.py'), encoding='utf-8').read()
             # 只认真正的调用行：``channel_root`` 自己的文档里会提到这个旧写法
             # （它要解释自己为什么存在），把那行算成违例会得到一个永远修不掉的假失败。
             bypass = [line.strip() for line in source.splitlines()

@@ -1,6 +1,5 @@
 """Compile local plugin frontend resources into one portable HTML page."""
 from html.parser import HTMLParser
-from html import escape
 from pathlib import Path
 import re
 

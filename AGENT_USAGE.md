@@ -1,6 +1,6 @@
 # DevMux Agent 接入与电脑 PowerShell
 
-人工操作和发布版接入请先读 [使用说明](使用说明.md)。发布包只需EXE和这一份说明，Agent可按其第五部分/附录生成仅依赖Windows Python与websockets的独立CLI/MCP脚本，无需本项目源码。本文后续源码入口命令用于已有源码的开发者，不作为发布版接入前提；原agent_cli.py/agent_mcp.py仍有项目传递导入，不能单独复制。
+人工操作先读随 Windows ZIP 提供的 [使用说明](使用说明.md)。使用 MCP 时，下载同一 Release 的 `DevMux-3.1.4-source.zip`，解压后安装 `requirements.txt`，注册其中 `agent_mcp.py` 的绝对路径。源码客户端连接已运行 EXE，不要另启动 server.py；原 agent_cli.py/agent_mcp.py 有项目传递导入，不能单独复制。旧版手工生成脚本仅覆盖旧工具表，新增插件管理使用本版源码入口。
 
 本地 Agent 通过 JSON CLI 或 MCP stdio 连接已运行的 DevMux。两者共用应用的设备列表、ADB shell 和中转连接，不启动第二套 ADB 轮询。电脑 PowerShell 和设备 ADB 权限独立。
 
@@ -55,7 +55,7 @@ python -B agent_cli.py job_output --args-file request.json
 ```json
 {
   "command": "python",
-  "args": ["-B", "D:\\workspace\\ai-work\\adb-manager\\agent_mcp.py"]
+  "args": ["-B", "D:\\workspace\\ai-work\\DevMux\\agent_mcp.py"]
 }
 ```
 
@@ -65,6 +65,7 @@ MCP 支持 initialize、ping、tools/list、tools/call，stdio 为 UTF-8 逐行 
 
 | 工具 | 说明 |
 |---|---|
+| plugins_manage | 本机插件清单、安装/更新、启停、卸载及操作后状态；参数见文末 |
 | targets_list | 当前实例可见的电脑和设备；多目标不猜测 |
 | target_status | 电脑能力、是否允许、shell 类型及 filesRoot |
 | windows_exec | 独立 PowerShell 任务；script、cwd、shell、timeout、可选 jobId |
@@ -150,7 +151,7 @@ Agent 会话 ID 由常驻实例持有，可跨 CLI 调用；应用重启后失�
 
 `python -B tests/test_agent.py` 覆盖真实 PowerShell/PTY/子进程、双节点中转/权限/去重、电脑文件、认证接口、CLI 和 MCP；`tests/test_agent_ui.py` 保留原有 Edge 回归并增加 PowerShell 终端交互、Ctrl+C 和权限入口实测。运行全套 `python -B tests/run_all.py`。
 
-`python -B tests/test_agent_extensions.py` 覆盖实际认证 WS/MCP/CLI、模拟继电器、模拟 DB 任务、本机/真实中转选路、执行端权限、身份、防重烧、取消、丢失回执追踪及后续注册工具发现。扩展通过模拟执行器验证，不操作实体继电器或板卡。
+`python -B -m tests.test_agent_extensions` 覆盖实际认证 WS/MCP/CLI、模拟继电器、模拟 DB 任务、本机/真实中转选路、执行端权限、身份、防重烧、取消、丢失回执追踪及后续注册工具发现。扩展通过模拟执行器验证，不操作实体继电器或板卡。
 
 同机双节点验证不能替代真实双机 SMB、真实 ADB 设备、继电器和固化现场验收；未开展的硬件项不能标记通过。
 
@@ -163,3 +164,28 @@ Agent 会话 ID 由常驻实例持有，可跨 CLI 调用；应用重启后失�
 ## Serial 串口接入（2026-10-14）
 
 通过 `extension_capabilities / extension_call` 使用 `tool=serial`；支持 ports/open/read/write/control/status/close，默认921600，共用字节输出，GUI输入优先。read 返回原始base64和字节游标，write支持text/hex/base64。完整参数、控制代次、requestId防重复和示例见 [串口使用说明](docs/使用说明/串口使用说明.md)。XMODEM支持发送/接收，使用xmodem-start/upload/run/status/download/cancel；参数与有限重试、独占和填充边界见同一说明。
+
+## 本机插件管理（3.1.4）
+
+MCP/CLI 工具 `plugins_manage` 复用认证 Agent 连接和插件管理器。无需开启 PowerShell 权限。只支持本机，不接受 target，不修改远程授权策略。远程扩展发现与调用继续走既有已验证连接及执行端权限；本工具不提供远程安装或启停。
+
+参数按动作严格校验：list 仅含 action；install 含 action、package（完整 .dmp 的 base64，大小受现有管理器限制）；enable/disable/uninstall 含 action、id。install 同时用于更新：先 disable，再 install 新包，最后 enable。停用存在活动任务的插件会失败；启用中的插件不能直接更新或卸载。未知字段、无效包、未安装 ID 和生命周期错误通过 MCP isError 返回。
+
+```json
+{"action":"list"}
+```
+```json
+{"action":"enable","id":"example"}
+```
+```json
+{"action":"disable","id":"example"}
+```
+
+生成安装参数文件（不要把 base64 手工粘贴到命令行）：
+
+```powershell
+@{action='install'; package=[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path '.\plugin\usb-relay-1.0.0.dmp')))} | ConvertTo-Json | Set-Content -Encoding utf8 request.json
+python -B agent_cli.py plugins_manage --args-file request.json
+```
+
+成功结果的 data 包含 target、action、result 和操作后的 plugins 清单（id/version/enabled）。确认安装版本和启停状态；结果未知时先 list，不能盲目重装。连接令牌沿用当前用户受限的实例发现目录，不在公开输出和发布包中分发。

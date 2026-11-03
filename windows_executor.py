@@ -253,9 +253,10 @@ class WindowsService:
                 self._save(record)
             return
         readers = []
+        final_state = None
         try:
             if record['cancel'].is_set() or self.closed:
-                record['info']['state'] = 'cancelled'
+                final_state = 'cancelled'
                 return
             proc = subprocess.Popen([executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-OutputFormat', 'Text',
                 '-ExecutionPolicy', 'Bypass', '-File', str(script_path)],
@@ -291,17 +292,26 @@ class WindowsService:
             record['tree'].kill()
             for thread in readers:
                 thread.join(timeout=3)
-            record['info'].update(state='failed' if record['info'].get('error') else
-                                 state or ('succeeded' if code == 0 else 'failed'), exitCode=code)
+            final_state = state or ('succeeded' if code == 0 else 'failed')
+            record['info']['exitCode'] = code
         except Exception as exc:
             if record.get('tree'):
                 record['tree'].kill()
             elif record.get('proc') and record['proc'].poll() is None:
                 record['proc'].kill()
-            record['info'].update(state='failed', error=f'{type(exc).__name__}: {exc}')
+            record['info']['error'] = f'{type(exc).__name__}: {exc}'
+            final_state = 'failed'
         finally:
             if record.get('tree'):
                 record['tree'].close()
+            # 先删除临时脚本与门闩，再发布完成状态：调用方看到终态时明文脚本已不存在。
+            for path in (script_path, gate):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            if final_state:
+                record['info']['state'] = 'failed' if record['info'].get('error') else final_state
             record['info']['finishedAt'] = time.time()
             with self.lock:
                 # 已完成任务从磁盘分页读取，释放有界历史占用的内存。
@@ -309,11 +319,6 @@ class WindowsService:
                 record['stdout'] = OutputBuffer()
                 record['stderr'] = OutputBuffer()
                 self._save(record)
-            for path in (script_path, gate):
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    pass
 
     def _drain(self, record, name):
         path = self.directory / (record['info']['jobId'] + '.' + name)

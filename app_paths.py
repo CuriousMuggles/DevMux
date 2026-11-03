@@ -7,6 +7,7 @@ import shutil
 import json
 from contextlib import contextmanager
 import threading
+import time
 
 _MIGRATION_LOCK = threading.RLock()
 
@@ -41,25 +42,38 @@ def _pid_alive(pid):
 
 @contextmanager
 def _migration_lock(target):
-    with _MIGRATION_LOCK, (target / '.migration.lock').open('a+b') as stream:
-        stream.seek(0, 2)
-        if not stream.tell():
-            stream.write(b'0'); stream.flush()
-        stream.seek(0)
-        if os.name == 'nt':
-            import msvcrt
-            msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
+    lock_path = target / '.migration.lock'
+    deadline = time.monotonic() + 5.0
+    with _MIGRATION_LOCK:
+        while True:
+            try:
+                stream = lock_path.open('a+b')
+                break
+            except PermissionError:
+                # Two instances creating the lock at the same moment make Windows
+                # report ACCESS_DENIED instead of ALREADY_EXISTS, so retry briefly.
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
+        with stream:
+            stream.seek(0, 2)
+            if not stream.tell():
+                stream.write(b'0'); stream.flush()
             stream.seek(0)
             if os.name == 'nt':
-                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
             else:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                stream.seek(0)
+                if os.name == 'nt':
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 def application_directory():

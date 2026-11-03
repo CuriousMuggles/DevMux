@@ -12,22 +12,26 @@
 - **多设备 ADB 终端**：自动发现设备，为每台设备提供独立终端，并支持快捷指令和 ADB 诊断。
 - **跨电脑中转**：一台主控电脑可连接多台从机，管理从机上的 ADB 设备；支持配对、连接状态提示和远程终端。
 - **文件传输**：在电脑和设备之间上传文件或文件夹、批量下载文件；支持通过中转操作远程设备。
-- **AI Agent 接入**：通过 MCP 或 CLI 调用统一接口，支持设备和部分扩展工具操作。配置与调用方式见 [Agent 使用说明](AGENT_USAGE.md)。
+- **AI Agent 接入**：通过 MCP 或 CLI 调用统一接口，支持设备的 ADB 操作、扩展工具与本机插件管理。配置与调用方式见 [Agent 使用说明](AGENT_USAGE.md)。
 - **串口与系统终端**：打开本机或远程 PowerShell、串口终端，支持文本和 HEX 交互、快捷指令及 XMODEM 传输。
-- **插件工具**：USB 继电器、DB 固化烧写和米家设备管理通过独立 `.dmp` 插件安装。工具菜单 → 插件管理中安装后，点击工具菜单中新出现的插件名称即可打开，无需重启。串口和跨机中转仍为核心功能。
+- **插件工具**：USB 继电器、DB 固化烧写、米家设备管理和 eBPF 调试通过独立 `.dmp` 插件安装。工具菜单 → 插件管理中安装后，点击工具菜单中新出现的插件名称即可打开，无需重启。串口和跨机中转仍为核心功能。
 
 ## 快速开始
 
 ### 运行打包版
 
-在 Windows 上运行 `DevMux.exe`。打包版内置 Python、ADB/fastboot 和前端资源；通过 USB 连接设备时，仍需安装相应设备驱动。
+1. 打开 [GitHub Releases](https://github.com/CuriousMuggles/DevMux/releases)，选择正式版本，下载 `DevMux-版本号-windows.zip` 和 `SHA256SUMS.txt`；源码 ZIP 不含可执行程序。
+2. 使用 `Get-FileHash .\DevMux-版本号-windows.zip -Algorithm SHA256` 与清单核对，再将整个 ZIP 解压到可写目录，例如 `D:\DevMux`。不要在压缩包内直接运行。
+3. Windows 10 1809 或更新的 64 位 Windows 需要 WebView2 Runtime；USB/串口设备需要对应驱动。双击 `DevMux.exe`，发布版内置 Python 和 Android platform-tools。
+4. 在「工具 → 插件管理」安装解压目录 `plugin/` 中所需 `.dmp`，然后启用。四个官方插件均随包提供，基础程序不预装插件；详见 [使用说明](使用说明.md)。
+5. 升级前退出所有旧实例并备份整个 `devmux-data/`，在原目录替换程序及发布文件；保留运行数据。显式设置的数据路径继续生效。
 
 ### 从源码运行
 
 需要 Python 3.10+、ADB，以及 Windows 的 WebView2 Runtime 和 ConPTY。
 
 ```powershell
-pip install websockets pywebview pywinpty pyserial
+pip install -r requirements.txt
 python server.py
 ```
 
@@ -49,7 +53,9 @@ DevMux 提供经过认证的 MCP 和 CLI 入口，可供 AI Agent 发现设备�
 
 ```powershell
 # 构建正式版
-python -m pip install pyinstaller
+python -m pip install -r requirements-build.txt
+# ADB_BUNDLE_DIR 指向完整 Android platform-tools，含 adb/fastboot/mke2fs 及配套 DLL
+$env:ADB_BUNDLE_DIR = "C:\tool\platform-tools"
 python -m PyInstaller build.spec --clean --noconfirm
 
 # 运行自动化验证
@@ -84,3 +90,5 @@ python release_plugins.py dist
 插件管理支持选择已验证的从机并批量传送安装包。从机需在本地开启“允许已验证主控远程安装插件”；安装不会自动启用或授权。需要远程操作时，在从机插件卡片开启“允许主控使用（自动启用）”。工具菜单始终保留本机已启用的工具，并按从机分组展示其已安装的远程工具；管理对象切换不影响本机入口。未启用或未授权时提示在从机开启。从机独有插件可按需加载界面并缓存，无需在主机安装后端；远程窗口标明电脑名称，操作固定到对应从机。米家仍仅支持本机使用。
 
 插件开发提供统一 Python/前端 SDK、公共主题与界面组件，以及 `plugin_dev.py create/check/serve/pack` 工具链。可以从标准工程起步，在临时环境直接调试源码，最终打包为单个 `.dmp`；继电器、DB、米家使用相同公开底座。详见 [插件开发指南](docs/plugin-development.md)。
+
+发布候选包与证据：`python release_bundle.py`；正式发布流程见 [发布说明](docs/releasing.md)。

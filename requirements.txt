@@ -1,0 +1,7 @@
+websockets
+pywebview
+pywinpty
+pyserial
+pyusb
+crcmod
+-r requirements-mijia.txt

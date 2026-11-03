@@ -19,6 +19,9 @@ TARGET = {'target': STRING}
 SESSION = {'sessionId': STRING}
 JOB = {**TARGET, 'jobId': STRING}
 TOOLS = [
+    tool('plugins_manage', '管理本机插件；install 同时用于更新，更新前显式停用；操作后返回完整清单验证状态。远程暂不支持。',
+         {'action': {'type': 'string', 'enum': ['list', 'install', 'enable', 'disable', 'uninstall']},
+          'id': STRING, 'package': STRING}, ['action']),
     tool('targets_list', '列出当前实例的电脑和设备；使用完整目标 ID'),
     tool('target_status', '查询电脑 PowerShell 能力与权限', TARGET, ['target']),
     tool('windows_exec', '启动独立 PowerShell 任务；不随 Agent 退出停止，用 job_status 查询',
@@ -249,6 +252,18 @@ class AgentAPI:
 
     async def call(self, name, args):
         validate(name, args)
+        if name == 'plugins_manage':
+            action = args['action']
+            expected = {'action'} if action == 'list' else {'action', 'package' if action == 'install' else 'id'}
+            if set(args) != expected:
+                raise ValueError('list 仅需 action；install 需要 base64 package；其他动作需要 id')
+            arguments = {key: value for key, value in args.items() if key != 'action'}
+            def manage():
+                with self.manager.plugins.lock:
+                    result = self.manager.plugins.dispatch(action, arguments)
+                    return {'target': 'computer:local', 'action': action, 'result': result,
+                            'plugins': self.manager.plugins.dispatch('list', {})}
+            return await self.manager._run_blocking(manage)
         if name in ('extensions_list', 'extension_capabilities', 'extension_call'):
             from agent_extensions import invoke
             return await invoke(self, name, args)

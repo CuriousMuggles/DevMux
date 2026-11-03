@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 # Test modules: (name, module_path)
 TESTS = [
+    ('MCP Plugin Management', 'tests.test_agent_plugins'),
+    ('Release Bundle Evidence', 'tests.test_release_bundle'),
     ('Application Data and Official Packages', 'tests.test_app_paths'),
     ('eBPF Plugin', 'tests.test_ebpf_plugin'),
     ('Plugin Device Permissions', 'tests.test_plugin_devices'),

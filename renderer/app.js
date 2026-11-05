@@ -1,6 +1,6 @@
 import { $, $$, base64ToUint8Array, state, terminalDecoders } from './core.js';
 import { callWS, callWSDefault, connectWS, pendingReqs, sendWS, setWs, ws } from './net.js';
-import { showToast } from './notify.js';
+import { errorDedupeKey, rejectDedupeKey, showToast } from './notify.js';
 import {
   closeRelayConfigDialog,
   closeRelayConfirmDialog,
@@ -163,8 +163,8 @@ function handleWSMessage(msg) {
       if (!msg.text) break;
       const kind = msg.kind || 'info';
       if (kind === 'error') showToast('error', '跨机中转', msg.text,
-        msg.text.startsWith('控制日志消费暂停：') ? 'relay-journal-consume' : null);
-      else if (kind === 'reject') showToast('warning', '跨机中转', msg.text);
+        msg.text.startsWith('控制日志消费暂停：') ? 'relay-journal-consume' : errorDedupeKey(msg.text));
+      else if (kind === 'reject') showToast('warning', '跨机中转', msg.text, rejectDedupeKey(msg.text));
       break;
     }
 

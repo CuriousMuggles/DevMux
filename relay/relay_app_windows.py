@@ -36,10 +36,21 @@ class ControllerWindowsMixin:
         if item is None:
             return
         ok = False
+        node = item['node']
         try:
-            result = item['node'].submit(item['peer'], relay.KIND_WINDOWS,
-                payload={'action': 'session_close', 'args': {'sessionId': item['identifier']}}, timeout=5)
-            ok = bool(result and result.ok)
+            # 与终端旧接入回收一致：对端离线时不发请求，避免每轮重试都推一条
+            # 「不下发请求给离线从机」的可见提醒；保留记录等心跳恢复。
+            offline_check = getattr(node, '_peer_offline_reason', None)
+            offline = offline_check(item['peer']) if callable(offline_check) else ''
+            if offline:
+                if not item.get('offlineNoted'):
+                    item['offlineNoted'] = True
+                    self.log('RELAY', f'对端离线，暂缓回收旧电脑终端接入（心跳恢复后继续）：{item["identifier"]}')
+            else:
+                item.pop('offlineNoted', None)
+                result = node.submit(item['peer'], relay.KIND_WINDOWS,
+                    payload={'action': 'session_close', 'args': {'sessionId': item['identifier']}}, timeout=5)
+                ok = bool(result and result.ok)
         except Exception as exc:
             self.log('RELAY', f'旧PowerShell接入回收失败，保留重试：{type(exc).__name__}: {exc}')
         finally:

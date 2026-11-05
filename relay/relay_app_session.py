@@ -97,10 +97,22 @@ class ControllerSessionMixin:
             if item is None or item['binding'].get('opening'):
                 return False
         ok = False
+        node = item['node']
         try:
-            result = item['node'].close_remote_session(
-                item['binding']['peerId'], item['streamId'], reason=item['reason'])
-            ok = bool(result and result.ok)
+            # 对端已离线时不再下发关闭请求：对端进程不在，请求只会被本地拦成
+            # 「不下发请求给离线从机」，每轮重试再推一条可见提醒 —— 长时间离线
+            # 就会刷屏。保留待回收记录，心跳恢复后照常回收。
+            offline_check = getattr(node, '_peer_offline_reason', None)
+            offline = offline_check(item['binding']['peerId']) if callable(offline_check) else ''
+            if offline:
+                if not item.get('offlineNoted'):
+                    item['offlineNoted'] = True
+                    self.log('RELAY', f'对端离线，暂缓回收旧终端接入（心跳恢复后继续）：{item["streamId"]}')
+            else:
+                item.pop('offlineNoted', None)
+                result = node.close_remote_session(
+                    item['binding']['peerId'], item['streamId'], reason=item['reason'])
+                ok = bool(result and result.ok)
         except Exception as exc:
             self.log('RELAY', f'旧终端接入回收失败，保留重试：{type(exc).__name__}: {exc}')
         finally:

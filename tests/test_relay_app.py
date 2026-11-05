@@ -30,6 +30,7 @@ from relay import relay_app  # noqa: E402
 from relay import relay_app_common  # noqa: E402 - 策略常量已随 B7 下沉，赋值要打在这里
 from relay import relay_adb
 from relay import relay_node  # noqa: E402
+from relay import relay_node_remote  # noqa: E402
 from relay import relay_session  # noqa: E402
 
 
@@ -178,6 +179,7 @@ class _Harness:
         self.master_devices: list = []
         self.statuses: list = []
         self.peer_requests: list = []
+        self.master_events: list = []
         self._output_lock = threading.Lock()
 
         self.master = self._make('pc-a', 'node-a', relay.ROLE_MASTER, heartbeat_s, None,
@@ -206,6 +208,7 @@ class _Harness:
             on_terminal_output=self._on_output,
             on_terminal_exit=self._on_exit,
             on_peer_request=self._on_peer_request,
+            on_event=self._on_master_event if role == relay.ROLE_MASTER else None,
         )
 
     def _on_master_devices(self, devices, keys):
@@ -227,6 +230,10 @@ class _Harness:
     def _on_peer_request(self, request):
         with self._output_lock:
             self.peer_requests.append(dict(request))
+
+    def _on_master_event(self, event):
+        with self._output_lock:
+            self.master_events.append(dict(event))
 
     # --- 常用操作 ---
     def start(self):
@@ -684,6 +691,51 @@ def _check_slave_offline(root) -> list:
 
 
 # ----------------------------------------------------------------------
+# 用例 5b：从机长时间离线时，旧接入回收不再反复推可见提醒
+# ----------------------------------------------------------------------
+def _check_retired_close_quiet(root) -> list:
+    """保留窗口过后设备消失，旧会话进入待回收；对端离线时只静默重试。"""
+    checks: list = []
+    saved = (relay_node_remote.REMOTE_DEVICE_LINGER_S,
+             relay_app_common.SESSION_REOPEN_BACKOFF_S)
+    relay_node_remote.REMOTE_DEVICE_LINGER_S = 0.5
+    relay_app_common.SESSION_REOPEN_BACKOFF_S = 0.2
+    harness = _Harness(root, heartbeat_s=0.5)
+    try:
+        with _patch(list_devices=_fake_list_devices, execute=_fake_execute):
+            harness.start()
+            harness.confirm_both()
+            opened = _wait_until(
+                lambda: any(item['opened'] for item in harness.master.sessions_snapshot()), 10,
+            )
+            checks.append(('主控先为远端设备开会话（前置）', opened, str(harness.master.sessions_snapshot())))
+            if not opened:
+                return checks
+            harness.slave.stop()
+            retired = _wait_until(lambda: bool(harness.master._retired_sessions), 15)
+            checks.append(('设备消失后旧接入进入待回收', retired,
+                           str(len(harness.master._retired_sessions))))
+            if not retired:
+                return checks
+            # 跨过至少两轮重试（退避已压到 0.2s），离线拒绝仍不应成为可见事件。
+            before = len([item for item in harness.master_events
+                          if '不下发请求给离线从机' in item.get('text', '')])
+            time.sleep(1.0)
+            after = len([item for item in harness.master_events
+                         if '不下发请求给离线从机' in item.get('text', '')])
+            checks.append(('对端离线时后台回收重试不推可见提醒（同类提醒不再刷屏）',
+                           before == after == 0, f'{before}→{after}'))
+            checks.append(('待回收记录保留，心跳恢复后仍可继续回收',
+                           bool(harness.master._retired_sessions),
+                           str(len(harness.master._retired_sessions))))
+    finally:
+        (relay_node_remote.REMOTE_DEVICE_LINGER_S,
+         relay_app_common.SESSION_REOPEN_BACKOFF_S) = saved
+        harness.stop()
+    return checks
+
+
+# ----------------------------------------------------------------------
 # 用例 6：失败超上限后慢速重试（不做永久放弃）
 # ----------------------------------------------------------------------
 def _check_slow_retry(root) -> list:
@@ -1098,6 +1150,7 @@ def run() -> bool:
         _check_end_to_end,
         _check_blind_master,
         _check_slave_offline,
+        _check_retired_close_quiet,
         _check_slow_retry,
         _check_role_change_pushes_status,
         _check_reload_from_disk,

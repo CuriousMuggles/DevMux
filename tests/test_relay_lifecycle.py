@@ -31,6 +31,7 @@ class LifecycleTests(unittest.TestCase):
             on_terminal_exit=lambda *a: self.exits.append(a),
             on_terminal_output=lambda *a: self.output.append(a))
         self.node = SimpleNamespace(detach_remote_session=Mock(),
+                                    _peer_offline_reason=Mock(return_value=''),
                                     close_remote_session=Mock(return_value=result(False)),
                                     open_remote_session=Mock(return_value=result(False)))
         self.controller.node = self.node

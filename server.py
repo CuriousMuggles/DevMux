@@ -161,6 +161,8 @@ HTTP_PORT = _env_port('HTTP_PORT', 8080)
 _HTTP_PORT = HTTP_PORT
 WS_PORT = _env_port('WS_PORT', 8765)
 RENDERER_DIR = os.path.join(_exe_dir(), 'renderer')
+# 应用图标（exe 图标由 build.spec 的 icon= 嵌入；运行时窗口图标用这份 .ico）
+ICON_PATH = os.path.join(_exe_dir(), 'assets', 'DevMux.ico')
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -1986,6 +1988,12 @@ def main():
         try:
             import webview
             import random as _r
+            # 任务栏身份：让任务栏/窗口按 DevMux 而不是 python.exe 归组与取图标。
+            try:
+                import ctypes as _ctypes
+                _ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('DevMux.DevMux')
+            except Exception:
+                pass
             _cache_bust_url = f'http://127.0.0.1:{http_port}/?_t={_r.randint(0,999999999)}'
             log('MAIN', f'Opening desktop window ({_cache_bust_url})...')
             window = webview.create_window(
@@ -2004,7 +2012,9 @@ def main():
             window.events.loaded += lambda: log('WINDOW', '页面 loaded 事件')
             crash_diagnostics.mark('webview-event-loop-enter')
             log('WINDOW', '进入 webview.start')
-            webview.start(private_mode=True)
+            # 图标文件缺失时传 None，回退到从 exe 里提取（打包后两者都有）。
+            webview.start(private_mode=True,
+                          icon=ICON_PATH if os.path.isfile(ICON_PATH) else None)
             log('WINDOW', 'webview.start 已返回')
             crash_diagnostics.mark('webview-event-loop-returned')
         except ImportError:

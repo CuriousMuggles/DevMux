@@ -1,4 +1,4 @@
-# DevMux 3.1.5 发布流程
+# DevMux 3.1.6 发布流程
 
 开发分支先构建新包，再运行专项测试；合入主线后重新构建主线目标包，再按 `python tests/run_all.py` 顺序全量验证，全部通过后才能公开发布。失败、跳过、环境阻塞均不能算通过。每次提交前必须展示完整 message 并取得明确确认。
 
@@ -6,7 +6,7 @@
 
 使用 64 位 Windows、Python 3.10+（实际验证环境见构建证据）、WebView2 Runtime，安装 `pip install -r requirements-build.txt`。准备完整 Android platform-tools，设置 `ADB_BUNDLE_DIR` 指向含 adb.exe、fastboot.exe、mke2fs.exe、mke2fs.conf 及配套 DLL 的目录；不得只复制 adb.exe。源码运行还可通过 ADB_PATH 指定 ADB。
 
-`python release_bundle.py` 构建候选包，同时记录未提交状态和每个源码文件摘要。候选包仅供验证。正式发布使用 `python release_bundle.py --release`，要求干净工作树、HEAD 与 `v3.1.5` tag 完整提交一致。先获准提交及合入，再创建对应 tag，执行正式构建和主线全量测试；测试不得改写待发布产物。
+`python release_bundle.py` 构建候选包，同时记录未提交状态和每个源码文件摘要。候选包仅供验证。正式发布使用 `python release_bundle.py --release`，要求干净工作树、HEAD 与 `v3.1.6` tag 完整提交一致。先获准提交及合入，再创建对应 tag，执行正式构建和主线全量测试；测试不得改写待发布产物。
 
 正式版 `build.spec` 与调试版 `build_debug.spec` 均调用 `release_plugins.py`，四个官方包在 dist/plugin/，命名为插件ID-插件版本.dmp；调试版用 `python -m PyInstaller build_debug.spec --clean --noconfirm`，不混入正式 ZIP。
 

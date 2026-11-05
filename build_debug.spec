@@ -42,6 +42,7 @@ a = Analysis(
     ] + _ADB_BINARIES,
     datas=[
         ('renderer', 'renderer'),
+        ('assets/DevMux.ico', 'assets'),
         ('plugin_sdk/sdk.js', 'plugin_sdk'),
         ('plugin_sdk/ui.css', 'plugin_sdk'),
         ('db_download_host.py', '.'),
@@ -111,7 +112,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='assets/DevMux.ico',
 )
 
 # Official packages are released separately beside the executable.

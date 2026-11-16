@@ -12,14 +12,12 @@ import subprocess
 import sys
 import zipfile
 
+import doc_links
+from doc_links import DOCUMENTS, STALE_RUNTIME_DOCS
 from app_version import APP_VERSION
-from release_plugins import build_official_plugins
+from release_plugins import OFFICIAL_PLUGINS, build_official_plugins
 
 ROOT = Path(__file__).resolve().parent
-DOCUMENTS = ('README.md', '使用说明.md', 'AGENT_USAGE.md', 'RELEASE-NOTES.md',
-             'LICENSE', 'THIRD_PARTY_LICENSES.md', 'docs/releasing.md',
-             'docs/新手使用与发布需求.md', 'docs/plugin-development.md',
-             'docs/使用说明/双端交互流程.md', 'docs/使用说明/串口使用说明.md')
 
 
 def git(*args):
@@ -50,6 +48,96 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def exe_version(path):
+    """读取 Windows 可执行文件的版本资源；非 Windows 或读不到时返回 None。"""
+    path = Path(path)
+    if sys.platform != 'win32' or not path.is_file():
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class FixedFileInfo(ctypes.Structure):
+        _fields_ = [('signature', wintypes.DWORD), ('strucVersion', wintypes.DWORD),
+                    ('fileVersionMS', wintypes.DWORD), ('fileVersionLS', wintypes.DWORD),
+                    ('productVersionMS', wintypes.DWORD), ('productVersionLS', wintypes.DWORD)]
+
+    size = ctypes.windll.version.GetFileVersionInfoSizeW(str(path), None)
+    if not size:
+        return None
+    buffer = ctypes.create_string_buffer(size)
+    if not ctypes.windll.version.GetFileVersionInfoW(str(path), 0, size, buffer):
+        return None
+    pointer = ctypes.c_void_p()
+    length = wintypes.UINT()
+    if not ctypes.windll.version.VerQueryValueW(buffer, '\\', ctypes.byref(pointer), ctypes.byref(length)):
+        return None
+    info = ctypes.cast(pointer, ctypes.POINTER(FixedFileInfo)).contents
+    return '%d.%d.%d' % (info.fileVersionMS >> 16, info.fileVersionMS & 0xFFFF,
+                         info.fileVersionLS >> 16)
+
+
+def verify_runtime(root=None):
+    """检查 `dist/` 是否是一份自洽的交付集：EXE 版本、四个官方包、随包文档。
+
+    返回问题描述列表；空列表表示双击这个 EXE 时，程序和身边的文档属于同一版本。
+    """
+    runtime = Path(root) if root else ROOT / 'dist'
+    if not runtime.is_dir():
+        return ['运行目录不存在：' + str(runtime)]
+    problems = ['%s -> %s' % (path, target) for path, target in check_runtime_docs(runtime)]
+    for name in DOCUMENTS:
+        if not (runtime / name).is_file():
+            problems.append('缺少随包文档：' + name)
+    plugins = runtime / 'plugin'
+    for identifier in OFFICIAL_PLUGINS:
+        if not plugins.is_dir() or not list(plugins.glob(identifier + '-*.dmp')):
+            problems.append('缺少官方插件包：' + identifier)
+    version = exe_version(runtime / 'DevMux.exe')
+    if version and version != APP_VERSION:
+        problems.append('DevMux.exe 是 %s，文档是 %s，需重新构建' % (version, APP_VERSION))
+    return problems
+
+
+def sync_runtime_docs(root=None):
+    """把随包文档整份同步到本地运行目录，让 ``dist/`` 成为一份自洽的交付集。
+
+    与发布 ZIP 用同一份白名单，因此 ``dist/`` 里双击运行的 EXE、``plugin/`` 里的
+    官方包和文档始终属于同一版本；同时清掉降为内部文档的旧文件，避免残留上一版
+    说明。内容相同则不写（保留 mtime）；绝不触碰 devmux-data、plugin 及用户自己
+    放进去的文件。返回 ``{'updated': [...], 'removed': [...], 'problems': [...]}``。
+    """
+    runtime = Path(root) if root else ROOT / 'dist'
+    report = {'updated': [], 'removed': [], 'problems': []}
+    if not runtime.is_dir():
+        return report
+    for name in DOCUMENTS:
+        source = ROOT / name
+        target = runtime / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file() and target.read_bytes() == source.read_bytes():
+            continue
+        shutil.copy2(source, target)
+        report['updated'].append(name)
+    for name in STALE_RUNTIME_DOCS:
+        target = runtime / name
+        if target.is_file():
+            target.unlink()
+            report['removed'].append(name)
+    report['problems'] = check_runtime_docs(runtime)
+    return report
+
+
+def check_runtime_docs(runtime=None):
+    """校验运行目录里的随包文档链接闭合；返回问题列表。"""
+    runtime = Path(runtime) if runtime else ROOT / 'dist'
+    if not runtime.is_dir():
+        return []
+    paths = [runtime / name for name in DOCUMENTS if (runtime / name).is_file()]
+    problems = doc_links.check_paths(paths, runtime)
+    problems += doc_links.check_closed_set([p.relative_to(runtime).as_posix() for p in paths], runtime)
+    return problems
+
+
 def stage_delivery(output, binary, info):
     """Copy only explicitly selected artifacts; user data never enters the ZIP."""
     output = Path(output)
@@ -70,6 +158,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release', action='store_true', help='require clean source at the version tag')
     options = parser.parse_args()
+    problems = doc_links.check_paths([ROOT / name for name in DOCUMENTS], ROOT)
+    problems += doc_links.check_closed_set(list(DOCUMENTS), ROOT)
+    if problems:
+        raise RuntimeError('随包文档链接不闭合，先修文档：' + '; '.join(
+            '%s -> %s' % (path.name if path.is_absolute() else path, target) for path, target in problems))
     commit = git('rev-parse', 'HEAD')
     dirty = bool(git('status', '--porcelain', '--untracked-files=all'))
     tag = 'v' + APP_VERSION
@@ -116,6 +209,16 @@ def main():
     shutil.copy2(stage / 'BUILD-INFO.json', output / 'BUILD-INFO.json')
     artifacts = [binary_zip, source_zip, output / 'BUILD-INFO.json', output / 'build.log', output / 'build-environment.txt']
     (output / 'SHA256SUMS.txt').write_text(''.join(digest(path) + '  ' + path.name + '\n' for path in artifacts), encoding='utf-8')
+    synced = sync_runtime_docs()
+    for name in synced['updated']:
+        print('synced runtime doc: ' + name)
+    for name in synced['removed']:
+        print('removed stale runtime doc: ' + name)
+    runtime_problems = verify_runtime()
+    for problem in runtime_problems:
+        print('runtime problem: ' + problem)
+    if runtime_problems:
+        raise RuntimeError('dist/ 不是自洽的交付集，先修上面的问题再发布')
     print(output)
 
 

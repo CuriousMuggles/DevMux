@@ -35,12 +35,76 @@ class ReleaseBundleTests(unittest.TestCase):
             actual = {p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()}
             self.assertEqual(listed, actual - {'SHA256SUMS.txt'})
             self.assertFalse(any('devmux-data' in name or '.log' in name for name in actual))
-            self.assertTrue({'README.md','使用说明.md','AGENT_USAGE.md','DevMux.exe'} <= actual)
+            self.assertTrue({'README.md','使用说明.md','Agent接入说明.md','DevMux.exe'} <= actual)
 
     def test_source_hashes_exclude_runtime_and_build_output(self):
         hashes = release_bundle.source_hashes()
         self.assertIn('agent_api.py', hashes)
         self.assertFalse(any(name.startswith(('dist/', 'build/', 'devmux-data/')) for name in hashes))
+
+    def test_sync_runtime_docs_mirrors_whole_set_and_prunes_stale(self):
+        """dist/ 要与发布包同一份文档集：缺的补上、旧的清掉、用户文件不动。"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / 'dist'
+            (runtime / 'docs').mkdir(parents=True)
+            (root / 'doc-a.md').write_text('new a', encoding='utf-8')
+            (root / 'doc-b.md').write_text('new b', encoding='utf-8')
+            (root / 'docs' / 'sub').mkdir(parents=True)
+            (root / 'docs' / 'sub' / 'doc-c.md').write_text('new c', encoding='utf-8')
+            (runtime / 'doc-a.md').write_text('stale a', encoding='utf-8')   # 过期 → 覆盖
+            (runtime / 'docs' / 'releasing.md').write_text('old', encoding='utf-8')  # 降为内部 → 删除
+            (runtime / 'user-note.txt').write_text('keep', encoding='utf-8')  # 用户文件 → 保留
+            originals = (release_bundle.ROOT, release_bundle.DOCUMENTS, release_bundle.STALE_RUNTIME_DOCS)
+            release_bundle.ROOT = root
+            release_bundle.DOCUMENTS = ('doc-a.md', 'doc-b.md', 'docs/sub/doc-c.md')
+            release_bundle.STALE_RUNTIME_DOCS = ('docs/releasing.md',)
+            try:
+                report = release_bundle.sync_runtime_docs()
+                self.assertEqual(sorted(report['updated']),
+                                 ['doc-a.md', 'doc-b.md', 'docs/sub/doc-c.md'])
+                self.assertEqual(report['removed'], ['docs/releasing.md'])
+                self.assertEqual(report['problems'], [])
+                self.assertEqual((runtime / 'doc-a.md').read_text(encoding='utf-8'), 'new a')
+                self.assertTrue((runtime / 'docs' / 'sub' / 'doc-c.md').is_file())
+                self.assertFalse((runtime / 'docs' / 'releasing.md').exists())
+                self.assertEqual((runtime / 'user-note.txt').read_text(encoding='utf-8'), 'keep')
+                again = release_bundle.sync_runtime_docs()
+                self.assertEqual((again['updated'], again['removed']), ([], []))  # 幂等
+            finally:
+                (release_bundle.ROOT, release_bundle.DOCUMENTS,
+                 release_bundle.STALE_RUNTIME_DOCS) = originals
+
+    def test_verify_runtime_flags_missing_docs_and_plugins(self):
+        """dist/ 自洽性：缺文档、缺官方插件包都要报出来，齐全时为零问题。"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / 'dist'
+            runtime.mkdir()
+            originals = (release_bundle.ROOT, release_bundle.DOCUMENTS)
+            release_bundle.ROOT = root
+            release_bundle.DOCUMENTS = ('doc-a.md',)
+            try:
+                problems = release_bundle.verify_runtime()
+                self.assertTrue(any('doc-a.md' in item for item in problems))
+                self.assertTrue(any('usb-relay' in item for item in problems))
+                (root / 'doc-a.md').write_text('a', encoding='utf-8')
+                (runtime / 'doc-a.md').write_text('a', encoding='utf-8')
+                (runtime / 'plugin').mkdir()
+                for identifier in release_bundle.OFFICIAL_PLUGINS:
+                    (runtime / 'plugin' / (identifier + '-1.0.0.dmp')).write_bytes(b'x')
+                self.assertEqual(release_bundle.verify_runtime(), [])
+            finally:
+                release_bundle.ROOT, release_bundle.DOCUMENTS = originals
+
+    def test_sync_runtime_docs_skips_when_runtime_dir_missing(self):
+        originals = release_bundle.ROOT
+        with tempfile.TemporaryDirectory() as temp:
+            release_bundle.ROOT = Path(temp)
+            try:
+                self.assertEqual(release_bundle.sync_runtime_docs()['updated'], [])
+            finally:
+                release_bundle.ROOT = originals
 
 
 def run():

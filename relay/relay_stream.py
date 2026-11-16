@@ -41,12 +41,19 @@ class StreamTail:
         self.rebuilt = False
         try:
             if relay_file_io.is_remote(self.path):
+                # 直接读代替「先 stat 再 read」：网络盘上两者各是一次往返，
+                # 而热点路径（有新数据）只需要一次。只有读到空时才回头 stat，
+                # 判断是 EOF 还是文件被归档后同名重建；重建则归零并立即读到新内容。
+                data = relay_file_io.read_bytes(self.path, self.offset, limit)
+                if data:
+                    self.offset += len(data)
+                    return data
                 size = relay_file_io.stat(self.path).st_size
                 if size < self.offset:
                     self.offset = 0
                     self.rebuilt = True
-                data = relay_file_io.read_bytes(self.path, self.offset, limit)
-                self.offset += len(data)
+                    data = relay_file_io.read_bytes(self.path, 0, limit)
+                    self.offset += len(data)
                 return data
             with open(self.path, 'rb') as handle:
                 handle.seek(0, os.SEEK_END)

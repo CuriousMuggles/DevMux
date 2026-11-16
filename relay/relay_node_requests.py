@@ -20,6 +20,7 @@ import relay
 from . import relay_adb
 from . import relay_journal
 from . import relay_session
+from . import relay_session_clock
 from . import relay_transfer
 from .relay_adb import CREATE_NO_WINDOW, DEFAULT_ADB_TIMEOUT_S
 from .relay_node_constants import STREAM_ID_RE
@@ -125,6 +126,62 @@ class LogStreamReader:
 class NodeRequestsMixin:
     """入站请求的裁决与执行。依赖 ``RelayNode.__init__`` 建立的属性。"""
 
+    @property
+    def session_clock(self) -> relay_session_clock.SessionClock:
+        """会话级时钟估计（按对端各一份）。懒建，避免改动 ``RelayNode.__init__``。"""
+        clock = getattr(self, '_session_clock', None)
+        if clock is None:
+            clock = self._session_clock = relay_session_clock.SessionClock()
+        return clock
+
+    def _expiry_exempt(self, request) -> bool:
+        """建链/撤链的探针请求不判时效（见 ``CLOCK_EXEMPT_KINDS``）。"""
+        return request.kind in relay.CLOCK_EXEMPT_KINDS
+
+    def _request_clock_offset_ms(self, request) -> float:
+        """本条请求的来源时钟相对本机的偏差（毫秒，对端 − 本机）。
+
+        优先用会话级估计（``SessionClock``）：它由 ``check-connection`` 往返的
+        四时间戳显式测出，取 RTT 最小的样本，并用本机单调钟推进、对"时间倒退"
+        方向限速。估计尚未建立或已老化时，退回按心跳 mtime 现算一份，并顺手喂进
+        估计里 —— 载体不是共享目录、心跳缺失时两者都量不出来，返回 0 退化成
+        各机自比的老行为。
+        """
+        peer = str(request.peer or '')
+        clock = self.session_clock
+        cached = clock.clock(peer)
+        # 只信握手样本：它有往返 RTT 证据，并且同时证明了「链路可执行」。mtime
+        # 推导值只用于展示 —— 共享目录一旦不可用它就停更，把它缓存下来当判据，
+        # 会在载体断开后继续用一个陈旧偏差。
+        if (cached is not None and cached.samples > 0
+                and cached.source == relay_session_clock.SOURCE_HANDSHAKE
+                and cached.synced()):
+            return cached.offset_ms
+        with self._io_lock:
+            own = self._peers.get(self.peer_id)
+            beat = self._peers.get(peer)
+        if own is None or beat is None or own.fileMtimeMs <= 0 or beat.fileMtimeMs <= 0:
+            return 0.0
+        offset = own.server_skew_ms - beat.server_skew_ms
+        # 节流：同一秒内重复观测只会把"可倒退预算"的时间基准刷小，没有收益。
+        existing = clock.clock(peer)
+        if existing is None or existing.age_ms() >= 1000.0:
+            clock.observe_mtime(peer, offset)
+        return offset
+
+    def _stamp_received(self, request) -> None:
+        """记下「本机读到这条请求」的时刻，回执里作为 T2 回传给主控对时。
+
+        必须在**读到**时记，不能等执行完再取 ``now``：那样 T2≈T3，对时公式里
+        「处理耗时对消」这一项就失效了，误差会随执行时长线性放大。
+        """
+        stamps = getattr(self, '_recv_stamps', None)
+        if stamps is None:
+            stamps = self._recv_stamps = {}
+        if len(stamps) > 512:
+            stamps.clear()
+        stamps[request.reqId] = relay.now_iso()
+
     # --- 从机：请求处理 ---
     def _process_requests(self) -> None:
         if self.control_journal and not isinstance(self.queue, relay_journal.JournalQueue):
@@ -144,13 +201,18 @@ class NodeRequestsMixin:
             if self.queue.has_result(request.reqId):
                 self.queue.archive_file(path)
                 continue
-            if request.is_expired():
+            offset = self._request_clock_offset_ms(request)
+            self._stamp_received(request)
+            if not self._expiry_exempt(request) and request.is_expired(offset_ms=offset):
                 # 过期即作废（fail-closed）：防止从机离线期间堆积的命令在恢复后
                 # 批量执行 —— 比如一条早已过时的 reboot。
                 self._write_result(
                     relay.Result(
                         reqId=request.reqId, status=relay.STATUS_EXPIRED,
-                        error='请求已过期，未执行', agentId=self.peer_id,
+                        # 折算后仍过期时把钟差说出来，否则用户只能看到无法行动的"已过期"。
+                        error='请求已过期，未执行' + (f'（两端时钟相差 {abs(offset) / 1000:.0f} 秒，请对时）'
+                                                 if abs(offset) >= 5000 else ''),
+                        agentId=self.peer_id,
                         finishedAt=relay.now_iso(),
                     ),
                     path,
@@ -276,7 +338,9 @@ class NodeRequestsMixin:
         """控制请求与持续流共用执行端准入；流不延长原请求TTL。"""
         payload = request.payload or {}
         reason=self._authorize(request);source=self._node_id_for(request.peer);record=self.pairing.get(source)
-        if (reason or (check_expiry and request.is_expired()) or self.role!=relay.ROLE_SLAVE or not record or not record.is_paired
+        if (reason or (check_expiry and not self._expiry_exempt(request)
+                       and request.is_expired(offset_ms=self._request_clock_offset_ms(request)))
+                or self.role!=relay.ROLE_SLAVE or not record or not record.is_paired
                 or payload.get('sourceNodeId')!=source or payload.get('targetNodeId')!=self.node_id
                 or not record.connectionId or payload.get('connectionId')!=record.connectionId):
             raise PermissionError(reason or '扩展工具请求的实例、连接代次或有效期无效')
@@ -792,7 +856,17 @@ class NodeRequestsMixin:
 
         请求由主控写、结果由从机写，所以从机消费掉请求后由从机归档它 —— 主控
         不再需要这份文件；结果文件则由主控读到后自行归档。
+
+        回执里带上 ``recvAt``（本机读到请求的时刻）：主控用它与自己写请求、读到
+        回执的时刻配成四时间戳算钟差（见 ``relay_session_clock.handshake_offset_ms``）。
+        旧主控忽略这个字段即可，不改变任何既有语义。
         """
+        stamps = getattr(self, '_recv_stamps', None)
+        stamp = stamps.pop(result.reqId, '') if stamps else ''
+        if stamp:
+            if result.extra is None:
+                result.extra = {}
+            result.extra.setdefault('recvAt', stamp)
         self.queue.write_result(result)
         if request_path:
             self.queue.archive_file(request_path)

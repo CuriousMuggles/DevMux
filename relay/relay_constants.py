@@ -20,6 +20,22 @@ LAYOUT_VERSION = 2
 DEFAULT_REQUEST_TTL_S = 30.0
 DEFAULT_HEARTBEAT_INTERVAL_S = 2.0
 HEARTBEAT_MISS_COUNT = 3
+
+# 会话级时钟估计（见 relay_session_clock）。跨机比墙钟是不可靠的：从机快 214 秒
+# 就能让每条请求一落地即过期，而心跳侧的在线判定走序号 + 单调钟，完全不受影响，
+# 于是出现「界面说已连接、命令全废」的误导。这里把两端钟差显式测出来再折算。
+# 钟差超过这么久没重测就算老化，退回各机自比（宁可退化也不拿陈旧值判时效）。
+CLOCK_SYNC_TTL_S = 300.0
+# 钟差倒退（会让已过期请求复活）的限速：每经过 1 秒真实时间最多倒退多少毫秒。
+CLOCK_SLEW_RATE_MS_PER_S = 50.0
+# 单次观测的最小可倒退预算，避免心跳很快时一步也退不动。
+CLOCK_SLEW_FLOOR_MS = 20.0
+# 超过这个幅度视为「系统时间被外部改过」，硬跳跟随并告警，不再限速。
+CLOCK_JUMP_ALERT_MS = 5000.0
+# 握手往返的择优窗口：只在这段时间内的样本里挑 RTT 最小的那次。
+CLOCK_HANDSHAKE_WINDOW_S = 120.0
+# 两个测量来源（握手 / mtime）相差超过这个值就告警：说明其中一路不可信。
+CLOCK_SOURCE_DIVERGE_MS = 2000.0
 # 跨机时效判定的额外容差（毫秒）。为什么不把容差并进 MISS_COUNT：这两件事的
 # 成因不同 —— MISS_COUNT 是「丢了几拍心跳」，容差是「跨机共享目录的观测延迟」
 # （SMB 属性缓存 + 一次慢枚举）。分开写，将来调哪个都说得清。
@@ -161,6 +177,12 @@ KIND_SESSION_TAKE = 'session-take-control'
 KIND_CLOSE_SESSION = 'close-session'
 KIND_START_LOG = 'start-log'
 KIND_STOP_LOG = 'stop-log'
+
+# 不判过期（时效）的探针请求。这两条**不执行任何设备操作**：``check-connection``
+# 只回一条状态并置位验证，``close-connection`` 只解除配对。它们本身就是建链和
+# 撤链的通道：建链前钟差尚未测出，若让它们参与过期判定，就会陷入「要建链先对时、
+# 要对时先建链」的死循环；撤链若被判过期，断电恢复后旧连接永远解不掉。
+CLOCK_EXEMPT_KINDS = frozenset((KIND_CHECK_CONNECTION, KIND_CLOSE_CONNECTION))
 
 # 结果状态
 STATUS_OK = 'ok'

@@ -283,18 +283,22 @@
       enqueue(async () => {
         queueBytes -= data.length;
         if (failed) return;
+        // 本地回显只依赖本机，必须在写请求之前显示：等到回执再显示等于没有本地回显，
+        // 每个字符都要先付一次中转往返（网络盘上约 80~130ms）。
+        if (echo.checked) {
+          if (mode === 'hex') display(Uint8Array.from(data.replace(/\s/g, '').match(/../g) || [], pair => parseInt(pair, 16)));
+          else term.write(data);
+        }
         const result = await request('write', {data, format: mode, encoding: selectedEncoding, generation, interCharDelayMs});
         if (!alive) return;
         if (!result.success) {
+          // 已按本地回显显示的字符并没有送达，必须显式纠正，不能让屏幕撒谎。
+          if (echo.checked) term.write('\r\n[输入未送达] ');
           status.textContent = result.operationUncertain ? '发送结果未确认，不会自动重发' : result.output || '输入未发送';
           if (result.operationUncertain) pauseInput('发送结果待确认，继续接收输出；不会重发，请等待回执或关闭后重开');
           return;
         }
         snapshot(result.data, true);
-        if (echo.checked) {
-          if (mode === 'hex') display(Uint8Array.from(data.replace(/\s/g, '').match(/../g) || [], pair => parseInt(pair, 16)));
-          else term.write(data);
-        }
       });
       return true;
     }

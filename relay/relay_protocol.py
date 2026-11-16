@@ -72,17 +72,25 @@ class Request:
             expiresAt=str(data.get('expiresAt', '')),
         )
 
-    def is_expired(self, now: Optional[float] = None) -> bool:
+    def is_expired(self, now: Optional[float] = None, offset_ms: float = 0.0) -> bool:
         """是否已过期。
 
         ``expiresAt`` 缺失或无法解析时**按过期处理**（fail-closed）：宁可让用户
         重新下发，也不要执行一条 TTL 不明的命令。
+
+        ``offset_ms`` 是**发送方时钟 − 本机时钟**（毫秒）：``createdAt`` /
+        ``expiresAt`` 由发送方的墙上时钟写入，直接与本机 ``time.time()`` 相比
+        等于假设两端对过时。两台机器差几十秒很常见（新装机、VM 快照恢复、双系统
+        来回切、时区没设对），而 TTL 只有 ``DEFAULT_REQUEST_TTL_S`` 秒 —— 从机
+        钟快过 TTL 时每条请求一落地就"过期"，整条中转链路一条命令都执行不了，
+        界面却因为心跳做了偏差补偿而显示"已连接"。折算后的比较仍保留原有语义：
+        真正堆积很久的请求照样过期。
         """
         deadline = relay_store._epoch_ms(self.expiresAt)
         if deadline <= 0:
             return True
         current = now if now is not None else time.time()
-        return current * 1000.0 > deadline
+        return current * 1000.0 + float(offset_ms or 0.0) > deadline
 
 
 @dataclass

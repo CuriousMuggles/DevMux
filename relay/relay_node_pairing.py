@@ -13,6 +13,7 @@ import uuid
 from typing import Optional
 
 import relay
+from . import relay_session_clock
 from .relay_node_constants import (
     CONNECTION_VERIFY_OK_INTERVAL_S,
     CONNECTION_VERIFY_RETRY_INTERVAL_S,
@@ -125,12 +126,40 @@ class NodePairingMixin:
     def connection_check_due(self, peer_id: str) -> bool:
         return time.monotonic() >= self._connection_check_after.get(peer_id, 0.0)
 
+    def _observe_handshake(self, peer_id: str, result: relay.Result,
+                           t1: float, t4: float, t1_mono: float, t4_mono: float) -> None:
+        """把一次验证往返变成一个钟差样本。
+
+        ``t1``/``t4`` 是本端写请求与读到回执的墙钟；``t2``/``t3`` 取自回执
+        （对端读到、对端完成）。四者配对能对消处理耗时，剩下的误差只有单向延迟
+        不对称 —— 所以往返越短样本越可信，``SessionClock`` 会丢掉明显偏慢的样本。
+        """
+        extra = result.extra or {}
+        t2 = relay._epoch_ms(extra.get('recvAt')) / 1000.0
+        t3 = relay._epoch_ms(result.finishedAt) / 1000.0
+        if t2 <= 0 or t3 <= 0 or t4 <= t1 or t4_mono < t1_mono:
+            return
+        offset_ms, rtt_ms = relay_session_clock.handshake_offset_ms(t1, t2, t3, t4)
+        if rtt_ms > 60000.0:
+            # 回执隔了很久才被读到，这种样本的单向延迟占比太高，不如不要。
+            return
+        self.session_clock.observe_handshake(peer_id, offset_ms, rtt_ms=rtt_ms)
+
     def verify_connection(self, peer_id: str) -> relay.Result:
-        """独立于设备的准入往返验证，由从机 _authorize 作最后裁决。"""
+        """独立于设备的准入往返验证，由从机 _authorize 作最后裁决。
+
+        这次往返同时充当対时握手：本端在写请求前后取 T1/T4，回执里带回
+        T2（对端读到请求）与 T3（对端完成），四时间戳配对就能算出两端钟差与
+        往返耗时（见 ``relay_session_clock.handshake_offset_ms``）。不需要额外
+        协议：旧主控读到 ``recvAt`` 只会忽略，旧从机不带该字段时退回 mtime 推导。
+        """
         endpoint = self._connection_endpoint(peer_id)
         record = self.pairing.get(self._node_id_for(peer_id))
         generation = record.connectionId if record else ''
+        t1_mono, t1_wall = time.monotonic(), time.time()
         result = self.submit(peer_id, relay.KIND_CHECK_CONNECTION, timeout=10.0)
+        self._observe_handshake(peer_id, result, t1_wall, time.time(),
+                                t1_mono, time.monotonic())
         if result.ok and result.extra.get('nodeId') != self._node_id_for(peer_id):
             result = relay.Result(reqId=result.reqId, status=relay.STATUS_ERROR,
                                   error='连接验证的对端实例不一致，请重新发现对端')
@@ -162,9 +191,20 @@ class NodePairingMixin:
         actual_node = node_id or (beat.nodeId if beat else '')
         local_confirmed = bool(actual_node and self.pairing.is_paired(actual_node)
                                and same_instance and self.trust.check(peer_id, beat.fingerprint)[0])
+        clock_info = self.session_clock.info(peer_id)
         common = {
             'online': online,
             'localConfirmed': local_confirmed,
+            # 三级状态分开暴露：能看见（心跳在推进）/ 能执行（握手回执通）/
+            # 时间已同步（钟差测出来了）。混成一个布尔，正是「界面说已连接、
+            # 实际命令全废」的根源。
+            'connectionReady': self.connection_ready(peer_id),
+            'clockSkewMs': clock_info.get('clockSkewMs'),
+            'clockSynced': clock_info.get('clockSynced'),
+            'clockRttMs': clock_info.get('clockRttMs'),
+            'clockMeasuredAgeMs': clock_info.get('clockMeasuredAgeMs'),
+            'clockSource': clock_info.get('clockSource'),
+            'clockNote': clock_info.get('clockNote'),
             'lastHeartbeatAgeMs': (max(0.0, beat.age_ms(skew_ms=skew)) if same_instance else None),
             'deviceCount': len(beat.devices) if same_instance else 0,
             'verifiedAt': '',
@@ -193,7 +233,15 @@ class NodePairingMixin:
                           '核对机器名和部署后，在本机点击「确认连接」', 'local-confirmation')
         if self.connection_ready(peer_id):
             common['verifiedAt'] = self._connection_verified_at.get(peer_id, '')
-            return result('connected', '连接已验证，通讯可用',
+            skew = common.get('clockSkewMs') or 0.0
+            note = ''
+            if abs(skew) >= relay.CLOCK_JUMP_ALERT_MS:
+                # 已自动折算，所以通讯仍然可用；但让用户知道该去对时，否则一旦
+                # 偏差越过 TTL 就会变成「能连上、命令全被丢弃」，届时更难查。
+                direction = '本机偏快' if skew < 0 else '本机偏慢'
+                note = (f'；两端时钟相差 {abs(skew) / 1000:.0f} 秒（{direction}），'
+                        f'已自动折算，建议两端对时')
+            return result('connected', '连接已验证，通讯可用' + note,
                           '在主控端管理设备' if self.role == relay.ROLE_MASTER else '保持本机运行，设备操作在主控端完成',
                           'verified')
         check = self._connection_checks.get(peer_id, ((), '', ''))
@@ -256,6 +304,8 @@ class NodePairingMixin:
                 self.extension_tools.close_owner(node_id)
             self._connection_verified.pop(str(peer_id), None)
             self._connection_verified_at.pop(str(peer_id), None)
+            # 解除连接后钟差要重测：新会话的两端实例、晶振基准都可能变了。
+            self.session_clock.forget(str(peer_id))
             # 撤销即失效：复查节奏一起作废，重新确认后无需等旧成功节奏。
             self._connection_check_after.pop(str(peer_id), None)
             self._connection_checks.pop(str(peer_id), None)

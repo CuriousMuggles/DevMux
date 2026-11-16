@@ -3,7 +3,7 @@
 # 版本必须钉死：PyInstaller 会把解析到的版本原样打进冻结包，不钉版本时同一天在
 # 两台机器上安装可能装到不同小版本，产物就无法复现。
 # 升级流程：先改版本号并跑通 build + 相关测试，再更新这里的值。
-# 参考环境：Python 3.14.3 / Windows x64（见 docs/releasing.md 的构建证据）。
+# 参考环境：Python 3.14.3 / Windows x64（见 docs/internal/发布流程.md 的构建证据）。
 websockets==16.1.1
 pywebview==6.2.1
 pywinpty==3.0.5

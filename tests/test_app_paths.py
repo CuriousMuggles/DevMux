@@ -94,7 +94,7 @@ print(json.dumps({'config': (target/'relay.json').read_text(), 'credentials': (t
             old = base / 'plugins-123' / '.data' / 'mijia'
             old.mkdir(parents=True)
             (old / 'credentials.dat').write_bytes(b'encrypted-credentials')
-            for name in ('DevMux.exe', 'RELEASE-NOTES.md', 'ebpf-0.0.1.dmp'):
+            for name in ('DevMux.exe', '发布说明.md', 'ebpf-0.0.1.dmp'):
                 (base / name).write_text('release', encoding='utf-8')
             target = app_paths.data_directory()
             self.assertEqual(target, base / 'devmux-data')

@@ -1,32 +1,36 @@
 # DevMux
 
-**DevMux 是一款 Windows 多设备调试与控制工作台**，将 ADB 终端、串口、文件传输和常用硬件工具集中在一个桌面界面中。
+**DevMux 是一个 Windows 调试工作台**：把 ADB 终端、串口、PowerShell、文件传输、跨机中转和硬件工具收在同一个窗口里。
 
-它的两个核心特点是：
+- **多设备、多终端**：自动发现 Android 设备，每台一个终端；ADB、PowerShell、串口共用标签、网格布局和独立窗口。
+- **跨电脑控制**：两台电脑共用一份共享目录，从机上插的设备在主控上直接操作，输入权可以交还和接管。
+- **AI 接入**：通过认证的 MCP 或 CLI 接口，让 Agent 在授权范围内使用设备与工具。
 
-- **跨电脑控制**：通过共享目录连接多台电脑，在主控端查看和操作从机上的设备。
-- **AI 接入**：通过认证的 MCP 或 CLI 接口，让 AI Agent 在授权范围内使用设备和工具能力。
+## 能做什么
 
-## 功能
+| 能力 | 要点 | 具体操作 |
+|---|---|---|
+| 多设备终端 | 自动发现设备；网格、单屏、拖出独立窗口；查找、录制、快捷命令 | [使用说明](使用说明.md) 第三、四章 |
+| 文件传输 | 电脑与设备间上传文件/文件夹、批量下载；远程设备同入口 | 同上，第四章 |
+| 跨机中转 | 主控确认从机后可操作远端设备；权限与执行都在设备所在电脑 | 同上，第五章 |
+| 串口 | COM 枚举、文本/HEX、日志、快捷指令、XMODEM | [串口说明](docs/使用说明/串口使用说明.md) |
+| 电脑命令 | 本机或从机的 PowerShell 终端，保留目录和变量 | [使用说明](使用说明.md) 第七章 |
+| 继电器、DB 烧写、米家、eBPF | 以官方插件提供，装好并启用后才出现在工具菜单 | [使用说明](使用说明.md) 第八至十一章 |
+| 让 Agent 操作 | MCP / CLI：查目标、执行命令、传文件、调用扩展 | [Agent 接入说明](Agent接入说明.md) |
 
-- **多设备 ADB 终端**：自动发现设备，为每台设备提供独立终端，并支持快捷指令和 ADB 诊断。
-- **跨电脑中转**：一台主控电脑可连接多台从机，管理从机上的 ADB 设备；支持配对、连接状态提示和远程终端。
-- **文件传输**：在电脑和设备之间上传文件或文件夹、批量下载文件；支持通过中转操作远程设备。
-- **AI Agent 接入**：通过 MCP 或 CLI 调用统一接口，支持设备的 ADB 操作、扩展工具与本机插件管理。配置与调用方式见 [Agent 使用说明](AGENT_USAGE.md)。
-- **串口与系统终端**：打开本机或远程 PowerShell、串口终端，支持文本和 HEX 交互、快捷指令及 XMODEM 传输。
-- **插件工具**：USB 继电器、DB 固化烧写、米家设备管理和 eBPF 调试通过独立 `.dmp` 插件安装。工具菜单 → 插件管理中安装后，点击工具菜单中新出现的插件名称即可打开，无需重启。串口和跨机中转仍为核心功能。
+本软件不提供手机屏幕镜像或触摸控制。
 
 ## 快速开始
 
-### 运行打包版
+1. 打开 [Releases](https://github.com/CuriousMuggles/DevMux/releases)，下载 `DevMux-版本号-windows.zip` 与 `SHA256SUMS.txt`；源码 ZIP 不含可执行程序。
+2. 用 `Get-FileHash .\DevMux-版本号-windows.zip -Algorithm SHA256` 与清单核对，再解压到可写目录（例如 `D:\DevMux`）。不要在压缩包内直接运行。
+3. 双击 `DevMux.exe`。Windows 10 1809 或更高、需 WebView2 Runtime；发布版内置 Python 运行时和 Android platform-tools。
+4. 接上要用的目标：Android 设备（允许 USB 调试）、串口（记下 COM 号）或另一台电脑上的设备（配同一共享目录）。具体步骤见 [使用说明](使用说明.md) 第二章。
+5. 继电器、DB 烧写、米家、eBPF 由插件提供：在「工具 → 插件管理」安装 `plugin/` 里的 `.dmp` 并启用，工具菜单才会出现入口。
 
-1. 打开 [GitHub Releases](https://github.com/CuriousMuggles/DevMux/releases)，选择正式版本，下载 `DevMux-版本号-windows.zip` 和 `SHA256SUMS.txt`；源码 ZIP 不含可执行程序。
-2. 使用 `Get-FileHash .\DevMux-版本号-windows.zip -Algorithm SHA256` 与清单核对，再将整个 ZIP 解压到可写目录，例如 `D:\DevMux`。不要在压缩包内直接运行。
-3. Windows 10 1809 或更新的 64 位 Windows 需要 WebView2 Runtime；USB/串口设备需要对应驱动。双击 `DevMux.exe`，发布版内置 Python 和 Android platform-tools。
-4. 在「工具 → 插件管理」安装解压目录 `plugin/` 中所需 `.dmp`，然后启用。四个官方插件均随包提供，基础程序不预装插件；详见 [使用说明](使用说明.md)。
-5. 升级前退出所有旧实例并备份整个 `devmux-data/`，在原目录替换程序及发布文件；保留运行数据。显式设置的数据路径继续生效。
+升级前退出所有旧实例并备份整个 `devmux-data/`，在原目录替换程序，保留运行数据。
 
-### 从源码运行
+## 从源码运行
 
 需要 Python 3.10+、ADB，以及 Windows 的 WebView2 Runtime 和 ConPTY。
 
@@ -35,60 +39,33 @@ pip install -r requirements.txt
 python server.py
 ```
 
-源码运行时，请将 ADB 加入 `PATH`，或通过 `ADB_PATH` 指定可执行文件路径。米家功能的额外依赖见 `requirements-mijia.txt`。
-
-## 跨电脑使用
-
-在需要连接设备的电脑上配置并启用从机，在主控电脑上选择并确认从机。双方通过可访问的共享目录交换控制请求和终端数据；设备操作由从机执行，并受从机权限控制。
-
-配置与操作步骤见 [双端交互流程](docs/使用说明/双端交互流程.md)。
-
-## AI 接入
-
-DevMux 提供经过认证的 MCP 和 CLI 入口，可供 AI Agent 发现设备并调用支持的操作。当前 Agent 入口需要匹配的客户端源码和 Python 环境。
-
-配置示例、首次调用和权限说明见 [AGENT_USAGE.md](AGENT_USAGE.md)。
-
-## 构建与验证
-
-```powershell
-# 构建正式版
-python -m pip install -r requirements-build.txt
-# ADB_BUNDLE_DIR 指向完整 Android platform-tools，含 adb/fastboot/mke2fs 及配套 DLL
-$env:ADB_BUNDLE_DIR = "C:\tool\platform-tools"
-python -m PyInstaller build.spec --clean --noconfirm
-
-# 运行自动化验证
-python -B tests\run_all.py
-```
-
-正式版产物为 `dist\DevMux.exe`。DB 烧写仍需在执行端配置相应固化包；具体要求见使用说明。
+源码运行时把 ADB 加入 `PATH`，或用 `ADB_PATH` 指定路径；米家额外依赖见 `requirements-mijia.txt`。
 
 ## 文档
 
-- [使用说明](使用说明.md)：启动、设备连接和界面操作
-- [Agent 使用说明](AGENT_USAGE.md)：MCP 和 CLI 接入
-- [双端交互流程](docs/使用说明/双端交互流程.md)：跨电脑配置与连接
-- [串口使用说明](docs/使用说明/串口使用说明.md)：串口终端操作
+| 文档 | 读者 | 覆盖范围 |
+|---|---|---|
+| [使用说明](使用说明.md) | 使用者 | 安装、接入、终端与布局、文件传输、跨机中转、串口、PowerShell、插件工具、排错 |
+| [串口说明](docs/使用说明/串口使用说明.md) | 使用者、Agent 接入方 | 串口参数、输入权、日志、XMODEM、serial 扩展接口 |
+| [Agent 接入说明](Agent接入说明.md) | 接入方 | MCP / CLI 注册、工具表、扩展调用、限额与边界 |
+| [插件开发说明](docs/插件开发说明.md) | 插件开发者 | 工程结构、前端/后端 SDK、权限、打包与发布 |
+| [发布说明](发布说明.md) | 使用者 | 每个版本的实际变化与升级要求 |
+| [第三方许可](第三方许可.md) | 分发者 | 随包组件及其许可证 |
+| [来源记录](vendor/usb-relay/来源记录.md) | 分发者 | 继电器 DLL 的上游来源与摘要 |
+
+## 构建与发布
+
+```powershell
+python -m pip install -r requirements-build.txt
+# ADB_BUNDLE_DIR 指向完整 Android platform-tools（adb/fastboot/mke2fs 及配套 DLL）
+$env:ADB_BUNDLE_DIR = "C:\tool\platform-tools"
+python -m PyInstaller build.spec --clean --noconfirm
+python release_bundle.py --release      # 生成 dist/releases/<版本-时间>/ 交付目录
+python -m tests.run_all                 # 全量验证
+```
+
+正式版产物为 `dist\DevMux.exe`，官方插件由 `release_plugins.py` 生成到 `dist/plugin/`，交付文档同步到 `dist/`。完整的发布门槛、证据要求与验收清单在源码仓库的 `docs/internal/发布流程.md`（不随发布包分发）。
 
 ## 许可
 
-DevMux 自有代码以 [GPL-3.0-or-later](LICENSE) 授权。第三方组件使用各自的许可证，详见 [第三方许可清单](THIRD_PARTY_LICENSES.md)。公开发布前仍需完成该清单中列出的核查。
-
-### 构建官方插件
-
-```powershell
-python release_plugins.py dist
-```
-
-正式版和调试版构建会自动将全部官方插件（USB 继电器、DB、米家、eBPF）打包到 `dist/plugin/`，文件名为 `插件ID-版本号.dmp`。
-
-插件启用或停用状态会在重启后恢复。运行配置、已安装插件及其凭据、日志和任务数据统一位于 `DevMux.exe` 同目录的 `devmux-data/`；升级首次启动时迁移旧位置的数据，已有目标文件优先保留。显式设置的 `RELAY_CONFIG` 和 `ADB_AGENT_RUNTIME_DIR` 继续生效。
-
-插件界面保留原工具的工作流程。停用或卸载前须先结束活动任务；更新时先停用，再安装新包。基础程序不预装上述官方插件。开发接口见 [插件开发说明](docs/plugin-development.md)。
-
-插件管理支持选择已验证的从机并批量传送安装包。从机需在本地开启“允许已验证主控远程安装插件”；安装不会自动启用或授权。需要远程操作时，在从机插件卡片开启“允许主控使用（自动启用）”。工具菜单始终保留本机已启用的工具，并按从机分组展示其已安装的远程工具；管理对象切换不影响本机入口。未启用或未授权时提示在从机开启。从机独有插件可按需加载界面并缓存，无需在主机安装后端；远程窗口标明电脑名称，操作固定到对应从机。米家仍仅支持本机使用。
-
-插件开发提供统一 Python/前端 SDK、公共主题与界面组件，以及 `plugin_dev.py create/check/serve/pack` 工具链。可以从标准工程起步，在临时环境直接调试源码，最终打包为单个 `.dmp`；继电器、DB、米家使用相同公开底座。详见 [插件开发指南](docs/plugin-development.md)。
-
-发布候选包与证据：`python release_bundle.py`；正式发布流程见 [发布说明](docs/releasing.md)。
+DevMux 自有代码以 [GPL-3.0-or-later](LICENSE) 授权。第三方组件使用各自许可证，详见 [第三方许可清单](第三方许可.md)。

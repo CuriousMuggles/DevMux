@@ -8,4 +8,4 @@ python plugin_dev.py serve plugins/example
 python plugin_dev.py pack plugins/example dist/example.dmp
 ```
 
-宿主API、资源、权限及生命周期参见 docs/plugin-development.md。
+宿主API、资源、权限及生命周期参见 docs/插件开发说明.md。

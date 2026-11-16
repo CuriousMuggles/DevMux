@@ -53,6 +53,7 @@ console.log('[APP] v=51 loaded, CMD_STORAGE_KEY=' + 'quick-commands-data');
 
 function handleWSMessage(msg) {
   if (String(msg.type || '').startsWith('desktop-terminal-')) { if (!window.PluginIntegration?.accept(msg) && !window.SerialControlsWindow?.accept(msg)) window.TerminalWindows?.accept(msg); return; }
+  if (String(msg.type || '').startsWith('app-update') && window.AppUpdate?.accept(msg)) return;
   if (msg.type === 'diagnostic-progress') {
     handleDiagnosticProgress(msg);
     return;

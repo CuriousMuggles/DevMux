@@ -15,9 +15,10 @@ import zipfile
 import doc_links
 from doc_links import DOCUMENTS, STALE_RUNTIME_DOCS
 from app_version import APP_VERSION
-from release_plugins import OFFICIAL_PLUGINS, build_official_plugins
+from release_plugins import OFFICIAL_PLUGINS, build_official_plugins, catalog
 
 ROOT = Path(__file__).resolve().parent
+REPOSITORY = 'CuriousMuggles/DevMux'
 
 
 def git(*args):
@@ -138,6 +139,37 @@ def check_runtime_docs(runtime=None):
     return problems
 
 
+def download_urls(tag, filename):
+    """下载地址：主地址用 GitHub 的固定 release 路径；镜像由环境变量追加。
+
+    镜像的 URL 形态（尤其 Gitee 的附件地址）需要发布时确认，不在这里猜，
+    宁可让运维用模板注入，也不把不确定的规则固化进客户端。
+    """
+    urls = [f'https://github.com/{REPOSITORY}/releases/download/{tag}/{filename}']
+    for template in os.environ.get('DEVMUX_DOWNLOAD_MIRRORS', '').split(','):
+        template = template.strip()
+        if template:
+            urls.append(template.replace('{tag}', tag).replace('{name}', filename))
+    return urls
+
+
+def build_manifest(info, plugin_directory, asset=None):
+    """客户端唯一要解析的清单；插件段让官方插件能脱离主程序单独升级。"""
+    tag = info['tag']
+    plugins = {identifier: {**entry, 'urls': download_urls(tag, entry['file'])}
+               for identifier, entry in catalog(plugin_directory).items()}
+    manifest = {'schema': 1, 'channel': 'stable', 'version': info['version'], 'tag': tag,
+                'status': info['status'], 'commit': info['commit'], 'releasedAt': info['builtAt'],
+                'plugins': plugins}
+    if asset:
+        manifest['assets'] = {'windows': asset}
+    # 强制升级的下限由运维按需注入，默认不写：没设过就不该凭空出现一个下限版本。
+    minimum = os.environ.get('DEVMUX_MIN_SUPPORTED_VERSION', '').strip()
+    if minimum:
+        manifest['minSupportedVersion'] = minimum
+    return manifest
+
+
 def stage_delivery(output, binary, info):
     """Copy only explicitly selected artifacts; user data never enters the ZIP."""
     output = Path(output)
@@ -202,12 +234,18 @@ def main():
         for path in sorted(stage.rglob('*')):
             if path.is_file():
                 archive.write(path, path.relative_to(stage).as_posix())
+    # 清单是独立发布资产，不打进 ZIP：它是给已安装客户端读的，不是给解压的人看的。
+    # 资产段要等 ZIP 生成后才能算大小与摘要，所以放在打包之后。
+    asset = {'name': binary_zip.name, 'size': binary_zip.stat().st_size,
+             'sha256': digest(binary_zip), 'urls': download_urls(tag, binary_zip.name)}
+    manifest_path = output / 'latest.json'
+    write_json(manifest_path, build_manifest(info, stage / 'plugin', asset))
     source_zip = output / ('DevMux-' + APP_VERSION + '-source.zip')
     with zipfile.ZipFile(source_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name in before:
             archive.write(ROOT / name, name)
     shutil.copy2(stage / 'BUILD-INFO.json', output / 'BUILD-INFO.json')
-    artifacts = [binary_zip, source_zip, output / 'BUILD-INFO.json', output / 'build.log', output / 'build-environment.txt']
+    artifacts = [binary_zip, source_zip, manifest_path, output / 'BUILD-INFO.json', output / 'build.log', output / 'build-environment.txt']
     (output / 'SHA256SUMS.txt').write_text(''.join(digest(path) + '  ' + path.name + '\n' for path in artifacts), encoding='utf-8')
     synced = sync_runtime_docs()
     for name in synced['updated']:

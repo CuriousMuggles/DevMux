@@ -2,3 +2,7 @@
 
 .plugin-toolbar{flex-wrap:wrap}.plugin-toolbar [data-target]{max-width:40%;min-width:120px}.plugin-footer[data-policy]{display:flex;align-items:center;gap:8px}.plugin-footer[data-policy][hidden]{display:none}
 .plugin-menu-heading { padding: 7px 12px 3px; color: var(--text-dim); font-size: 11px; border-top: 1px solid var(--border); }
+.plugin-dialog .plugin-update, .plugin-dialog .plugin-update-all { background: var(--accent); color: #fff; border-color: var(--accent); }
+.plugin-dialog .plugin-update-all[hidden] { display: none; }
+.plugin-dialog .plugin-check[hidden] { display: none; }
+.plugin-identity small[data-version] { font-variant-numeric: tabular-nums; }

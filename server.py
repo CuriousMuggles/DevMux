@@ -26,6 +26,11 @@ if len(sys.argv) > 1 and sys.argv[1] == '--plugin-host':
     run(sys.argv[2])
     raise SystemExit(0)
 
+# 替换进程：主程序已退出，由自身副本在这里换掉 exe。必须在后端与窗口初始化之前分流。
+if len(sys.argv) > 1 and sys.argv[1] == '--apply-update':
+    from update_apply import run as run_update_apply
+    raise SystemExit(run_update_apply(sys.argv[2:]))
+
 # 下载辅助入口在主后端及窗口初始化之前执行，隔离 USB 原生调用。
 if len(sys.argv) > 1 and sys.argv[1] == '--db-download-host':
     from db_download_host import run_host as run_download_host
@@ -353,6 +358,16 @@ class ManagerServer(AdbServiceMixin):
         from plugin_manager import PluginManager
         self.plugins = PluginManager(Path(self.relay.config_path).parent / ('plugins-' + storage_id), self.extension_tools)
         self.extension_tools.plugin_manager = self.plugins
+        from plugin_update import PluginUpdater, seed_official_plugins
+        self.plugin_updater = PluginUpdater(self.plugins)
+        from app_paths import application_directory
+        seed_official_plugins(self.plugins, application_directory() / 'plugin')
+        from app_update import AppUpdater
+        self.app_updater = AppUpdater(Path(self.relay.config_path).parent, application_directory())
+        self.app_updater.cleanup()
+        self._update_result = self.app_updater.consume_result()
+        self._update_task = None
+        self.native_window = None
         atexit.register(self.plugins.close)
         self.agent = AgentAPI(self)
         # 固化工具真实执行；原 DB 包保持只读，测试宿主显式注入假执行器。
@@ -958,7 +973,7 @@ class ManagerServer(AdbServiceMixin):
             if msg.get('id') is not None:
                 await self._send(ws,dict(type='exec-result',id=msg['id'],**result))
             return
-        if typ in ('plugin-manager', 'computer-tool', 'extension-tool', 'usb-relay', 'relay-clear-cache', 'serial-xmodem-save', 'get-serial-commands', 'save-serial-commands', 'serial-recording'):
+        if typ in ('plugin-manager', 'plugin-update', 'app-update', 'computer-tool', 'extension-tool', 'usb-relay', 'relay-clear-cache', 'serial-xmodem-save', 'get-serial-commands', 'save-serial-commands', 'serial-recording'):
             # 电脑及扩展工具仅接受本机页面，防止外部网站触发硬件动作。
             origin = getattr(getattr(ws, 'request', None), 'headers', {}).get('Origin', '')
             from urllib.parse import urlsplit
@@ -979,6 +994,48 @@ class ManagerServer(AdbServiceMixin):
                     from remote_plugins import invoke
                     result=await self._run_blocking(invoke,self.relay,target['nodeId'],msg.get('action'),msg.get('arguments',{}))
                 await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=True, data=result))
+            except Exception as exc:
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=False, output=str(exc)))
+            return
+        if typ == 'plugin-update':
+            # 只处理本机已安装的官方插件：远程节点的插件由各自机器升级。
+            try:
+                action = msg.get('action')
+                if action == 'check':
+                    data = await self._run_blocking(self.plugin_updater.check, msg.get('force') is True)
+                elif action == 'apply':
+                    data = await self._run_blocking(self.plugin_updater.apply, msg.get('ids'))
+                else:
+                    raise ValueError('未知的插件更新动作')
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=True, data=data))
+            except Exception as exc:
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=False, output=str(exc)))
+            return
+        if typ == 'app-update':
+            # 只作用于本机：主程序版本是每台机器自己的事，远程节点不参与。
+            try:
+                action = msg.get('action')
+                if action == 'status':
+                    data = await self._run_blocking(self.app_updater.status)
+                elif action == 'check':
+                    data = await self._run_blocking(self.app_updater.check, True)
+                elif action == 'download':
+                    data = await self._run_blocking(self.app_updater.download, self._update_progress())
+                elif action == 'skip':
+                    data = await self._run_blocking(self.app_updater.skip, msg.get('version'))
+                elif action == 'beta':
+                    data = await self._run_blocking(self.app_updater.set_beta, msg.get('enabled') is True)
+                elif action == 'ack-result':
+                    data = await self._run_blocking(self.app_updater.ack_result)
+                elif action == 'restart':
+                    data = await self._run_blocking(self.app_updater.arm_restart)
+                    data['closing'] = self.close_for_update()
+                    if not data['closing']:
+                        self.app_updater.cancel_restart()
+                        raise ValueError('无法关闭当前窗口，请手动退出后重新打开')
+                else:
+                    raise ValueError('未知的升级动作')
+                await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=True, data=data))
             except Exception as exc:
                 await self._send(ws, dict(type='exec-result', id=msg.get('id'), success=False, output=str(exc)))
             return
@@ -1767,6 +1824,54 @@ class ManagerServer(AdbServiceMixin):
 
 
     # --- Lifecycle ---
+    async def _app_update_loop(self):
+        """定时检测主程序新版本；只推提醒，不自动下载、不弹模态窗。"""
+        from app_update import CHECK_INTERVAL_SECONDS, STARTUP_DELAY_SECONDS
+        if os.environ.get('DEVMUX_NO_UPDATE_CHECK') == '1':
+            log('UPDATE', '已按 DEVMUX_NO_UPDATE_CHECK=1 跳过主程序更新检测')
+            return
+        await asyncio.sleep(STARTUP_DELAY_SECONDS)
+        while True:
+            try:
+                data = await self._run_blocking(self.app_updater.check, False)
+                if data.get('available'):
+                    log('UPDATE', f"发现新版本 {data.get('latest')}（当前 {data.get('current')}）")
+                    self._broadcast_async(dict(type='app-update-available', data=data))
+                elif data.get('error'):
+                    log('UPDATE', '检测未完成: ' + str(data.get('error')))
+            except Exception:
+                log('UPDATE', '定时检测异常: ' + traceback.format_exc())
+            await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+
+    def _update_progress(self):
+        """下载进度回调：百分比变化才广播，避免 33MB 刷出上千条消息。"""
+        last = {'percent': -1}
+
+        def report(received, total):
+            if not isinstance(total, int) or total <= 0:
+                return
+            percent = int(received * 100 / total)
+            if percent == last['percent']:
+                return
+            last['percent'] = percent
+            self._broadcast_async(dict(type='app-update-progress', percent=percent))
+        return report
+
+    def close_for_update(self):
+        """退出并让位给替换进程；窗口销毁后 webview.start 返回，收尾时再启动副本。"""
+        window = self.native_window
+        if window is None:
+            return False
+
+        def destroy():
+            try:
+                window.destroy()
+            except Exception:
+                log('UPDATE', '关闭窗口失败: ' + traceback.format_exc())
+
+        threading.Timer(0.6, destroy).start()
+        return True
+
     async def run(self):
         """后台服务主循环：初始化 → 等待停止/重启 → 清理，循环往复。
 
@@ -1776,6 +1881,9 @@ class ManagerServer(AdbServiceMixin):
         """
         global _WS_PORT
         self.loop = asyncio.get_running_loop()
+        # 主程序升级检测：启动 30 秒后第一次，之后每 12 小时。失败静默，只记日志。
+        if self._update_task is None or self._update_task.done():
+            self._update_task = self.loop.create_task(self._app_update_loop())
         while True:
             self._stop = asyncio.Event()
             self._restart = asyncio.Event()
@@ -2006,6 +2114,8 @@ def main():
                 confirm_close=True,
             )
             mgr.desktop_terminals.bind_native(webview)
+            # 升级要等窗口销毁才返回，收尾阶段需要用这份引用主动关窗。
+            mgr.native_window = window
             window.events.closed += lambda:mgr.desktop_terminals.close_all()
             window.events.closing += lambda: log('WINDOW', '收到窗口 closing 事件')
             window.events.closed += lambda: log('WINDOW', '收到窗口 closed 事件')
@@ -2031,6 +2141,12 @@ def main():
         mgr.stop()
         http_srv.shutdown()
         stop_event.wait(timeout=5)
+        # 所有会话与端口都收干净后再让位给替换进程：它会等 exe 解锁，然后改名换文件。
+        try:
+            if mgr.app_updater.launch_updater():
+                log('MAIN', '已启动替换进程，退出后由它安装新版本')
+        except Exception:
+            log('UPDATE', '启动替换进程失败: ' + traceback.format_exc())
         log('MAIN', 'Shutdown complete')
     except Exception:
         msg = f'FATAL: {traceback.format_exc()}'

@@ -68,6 +68,28 @@ def run():
                 evaluate("document.querySelector('[data-list] [data-action=enable]').click()")
                 time.sleep(.2)
                 assert evaluate("window.pluginEnabled")
+                # 插件升级：检测结果异步到达后，行内补版本箭头与「更新」按钮。
+                evaluate("""window.beforeUpdate=callWS;window.updateApplied=null;
+                callWS=async(type,payload)=>{
+                  if(type==='plugin-update'&&payload.action==='check')return {success:true,data:{updates:[{id:'example',name:'Example',current:'1',version:'2'}],blocked:[]}};
+                  if(type==='plugin-update'&&payload.action==='apply'){window.updateApplied=payload.ids;return {success:true,data:{results:payload.ids.map(id=>({id,success:true,from:'1',to:'2'}))}};}
+                  return window.beforeUpdate(type,payload);
+                };
+                document.querySelector('#plugin-manager .plugin-check').click();""")
+                for _ in range(40):
+                    if evaluate("!!document.querySelector('[data-action=update]')"): break
+                    time.sleep(.1)
+                assert evaluate("document.querySelector('[data-version]').textContent==='v1 → v2' && document.querySelector('#plugin-manager .plugin-update-all').hidden")
+                evaluate("document.querySelector('[data-action=update]').click()")
+                for _ in range(40):
+                    if evaluate("!!window.updateApplied"): break
+                    time.sleep(.1)
+                assert evaluate("JSON.stringify(window.updateApplied)==='[\"example\"]'")
+                for _ in range(40):
+                    if evaluate("[...document.querySelectorAll('.toast-body')].some(node=>node.textContent.includes('已更新 1 个插件'))"): break
+                    time.sleep(.1)
+                assert evaluate("[...document.querySelectorAll('.toast-body')].some(node=>node.textContent.includes('已更新 1 个插件'))")
+                evaluate("callWS=window.beforeUpdate")
                 assert evaluate("document.querySelector('[data-plugin-menu=example]').textContent.includes('Example')")
                 evaluate("document.querySelector('[data-plugin-menu=example]').click()")
                 time.sleep(.2)

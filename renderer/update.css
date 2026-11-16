@@ -1,0 +1,174 @@
+/* ============================================================
+   主程序升级提示：右上角卡片、关于页入口、更新说明弹窗
+   ============================================================ */
+
+.app-update-card {
+  position: fixed;
+  top: calc(var(--tab-height) + 12px);
+  right: 12px;
+  width: 336px;
+  /* 低于工具浮窗（tool-floating-window 从 3000 起递增），弹窗打开时不能盖住它的关闭按钮。 */
+  z-index: 2999;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.app-update-card[hidden] { display: none; }
+
+.app-update-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-update-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-update-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-update-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.app-update-close:hover { color: var(--text); background: var(--bg-toolbar); }
+
+.app-update-body {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.app-update-bar {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.app-update-bar[hidden] { display: none; }
+
+.app-update-bar > span {
+  display: block;
+  height: 100%;
+  width: 2%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+.app-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.app-update-actions:empty { display: none; }
+
+.app-update-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-toolbar);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-update-btn:hover { border-color: var(--accent); }
+
+.app-update-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1e1e2e;
+  font-weight: 600;
+}
+
+.app-update-btn.primary:hover { filter: brightness(1.08); }
+
+/* 顶部「帮助 → 关于」的红点：有新版或待重启时提示入口在哪 */
+#help-about.has-update { color: var(--accent); }
+
+#help-about.has-update::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.about-row .about-update-check {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-toolbar);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.about-row .about-update-check:hover { border-color: var(--accent); }
+
+.about-update-text { color: var(--text-dim); font-size: 12px; }
+
+.app-update-notes { width: 520px; max-width: calc(100vw - 48px); }
+
+.app-update-notestext {
+  margin: 8px 0 4px;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Consolas', 'Microsoft YaHei', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.about-update-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

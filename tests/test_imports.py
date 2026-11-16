@@ -97,7 +97,8 @@ DEFERRED_BASELINE = {
     'server': {'plugin_host', 'db_download_host', 'pty_host', 'app_paths',
                'crash_diagnostics', 'desktop_terminals', 'serial_recording',
                'extension_tools', 'serial_terminal', 'plugin_manager',
-               'xmodem_transfer', 'relay_carrier', 'remote_plugins'},
+               'xmodem_transfer', 'relay_carrier', 'remote_plugins',
+               'app_update', 'plugin_update', 'update_apply'},
     'windows_executor': {'powershell_pty', 'relay_transfer'},
 }
 

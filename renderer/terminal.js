@@ -244,6 +244,7 @@ export function showAboutDialog() {
       <div class="about-info">
         <div class="about-row"><span class="about-key">应用名称</span><span>DevMux</span></div>
         <div class="about-row"><span class="about-key">版本</span><span>v${APP_VERSION}</span></div>
+        <div class="about-row" data-app-update></div>
       </div>
       <div class="about-btns">
         <button class="about-close primary">关闭</button>
@@ -251,6 +252,7 @@ export function showAboutDialog() {
     </div>
   `;
   document.body.appendChild(overlay);
+  window.AppUpdate?.mountAbout(overlay.querySelector('[data-app-update]'));
   overlay.querySelector('.about-close').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.remove();

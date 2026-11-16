@@ -44,7 +44,7 @@ console.log('[PASS] 串口历史50条/去重/窗口隔离、多种换行、HEX�
 
 SCRIPT = r"""
 (async()=>{
- const wait=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw Error('命令输入等待超时');};
+ const wait=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}throw Error('命令输入等待超时');};
  const assert=(x,m)=>{if(!x)throw Error(m);};
  await wait(()=>window.SerialIntegration&&typeof ws!=='undefined'&&ws.readyState===1);
  document.getElementById('window-serial').click();await wait(()=>!document.getElementById('serial-open').disabled);

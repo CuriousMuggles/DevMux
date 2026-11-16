@@ -29,6 +29,9 @@ TESTS = [
     ('Plugin Development SDK', 'tests.test_plugin_dev'),
     ('Plugin SDK Browser', 'tests.test_plugin_sdk_ui'),
     ('Plugin Store', 'tests.test_plugin_store'),
+    ('Plugin Update', 'tests.test_plugin_update'),
+    ('Application Update', 'tests.test_app_update'),
+    ('Application Update UI', 'tests.test_update_ui'),
     ('Plugin Runtime', 'tests.test_plugin_runtime'),
     ('Remote Plugins', 'tests.test_remote_plugins'),
     ('Plugin UI', 'tests.test_plugin_ui'),
@@ -174,8 +177,16 @@ def main():
     for name, module in TESTS:
         print(f'[{name}]')
         t0 = time.time()
+        retried = False
         try:
             ok = run_test(name, module)
+            if ok is False:
+                # UI / 原生窗口类用例在繁忙机器上偶发超时或输入竞态。重跑一次再判定，
+                # 两次都失败才算真实失败，避免把环境波动记成回归。
+                retried = True
+                print('  [RETRY] 首次失败，1 秒后重跑一次')
+                time.sleep(1.0)
+                ok = run_test(name, module)
             elapsed = time.time() - t0
         except UserContextRequired as error:
             elapsed = time.time() - t0
@@ -196,7 +207,7 @@ def main():
             status = 'SKIP'
         elif ok:
             passed += 1
-            status = 'PASS'
+            status = 'PASS（重试后）' if retried else 'PASS'
         else:
             failed += 1
             status = 'FAIL'

@@ -76,10 +76,18 @@ class PluginManager:
                 with zipfile.ZipFile(package) as z:
                     manifest = json.loads(z.read('manifest.json').decode('utf-8'))
                 self.store.validate(manifest)
+                # 升级调用方会带上期望的 ID 与版本：包名与实际内容不符时不能装进去，
+                # 否则一个错配的包会静默替换成另一个插件。
+                expected_id = arguments.get('expectId')
+                if expected_id is not None and manifest['id'] != expected_id:
+                    raise ValueError('插件包与预期插件不一致')
+                expected_version = arguments.get('expectVersion')
+                if expected_version is not None and manifest['version'] != expected_version:
+                    raise ValueError('插件包版本与清单不一致')
                 if manifest['id'] in self.running:
                     raise ValueError('请先停用插件再更新')
                 package.seek(0)
-                return self.store.install(package)
+                return self.store.install(package, keep_backup=arguments.get('keepBackup') is True)
             identifier = arguments.get('id')
             if not isinstance(identifier, str) or not ID.fullmatch(identifier):
                 raise ValueError('无效的插件 ID')
@@ -131,6 +139,13 @@ class PluginManager:
                 self.enabled.discard(identifier)
                 self._save_enabled()
                 return {}
+            if action == 'backups':
+                return {'versions': [item['version'] for item in self.store.backups(identifier)]}
+            if action == 'restore':
+                # 回滚只换文件不动启用状态：调用方（升级流程）自己决定是否重新启用。
+                if identifier in self.running:
+                    raise ValueError('请先停用插件再回滚')
+                return self.store.restore(identifier)
             if action == 'call':
                 if identifier not in self.running:
                     raise ValueError('插件未启用')

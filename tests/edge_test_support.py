@@ -51,6 +51,9 @@ if os.name == 'nt':
 class EdgeSession:
     """将 Edge 及其全部子进程放入 kill-on-close Job，并通过系统分配端口连接 CDP。"""
 
+    # 所有用例的 CDP 就绪等待不得低于这个值：软件渲染在繁忙机器上冷启动会明显变慢。
+    READY_TIMEOUT_FLOOR = 45
+
     def __init__(self, process, job, profile: Path, stderr_path: Path):
         self.process = process
         self._job = job
@@ -123,6 +126,9 @@ class EdgeSession:
         return cls(process, job, profile, stderr_path)
 
     def wait_ready(self, timeout=20, expected_url=None):
+        # 软件渲染冷启动在繁忙机器上常超过 20 秒。给所有调用方一个统一下限，
+        # 避免各用例各传偏小的值，把启动慢误判成失败。
+        timeout = max(timeout, self.READY_TIMEOUT_FLOOR)
         active = self.profile / 'DevToolsActivePort'
         deadline = time.monotonic() + timeout
         last_error = 'DevToolsActivePort 尚未生成'
@@ -148,7 +154,19 @@ class EdgeSession:
             except (OSError, ValueError, IndexError, json.JSONDecodeError) as exc:
                 last_error = f'{type(exc).__name__}: {exc}'
             time.sleep(.1)
-        raise TimeoutError(f'Edge CDP 在 {timeout}s 内未就绪: {last_error}')
+        raise TimeoutError(f'Edge CDP 在 {timeout}s 内未就绪: {last_error}{self._stderr_tail()}')
+
+    def _stderr_tail(self, limit=6):
+        """超时时带上 Edge 自己的最后几行输出，便于区分被杀软拖慢与真崩溃。"""
+        try:
+            lines = [line for line in
+                     self.stderr_path.read_text(encoding='utf-8', errors='replace').splitlines()
+                     if line.strip()]
+        except OSError:
+            return ''
+        if not lines:
+            return ''
+        return '\n  Edge stderr 末行:\n  ' + '\n  '.join(lines[-limit:])
 
     def close(self):
         if self._job:

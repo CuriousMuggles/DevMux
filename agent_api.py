@@ -21,7 +21,7 @@ JOB = {**TARGET, 'jobId': STRING}
 TOOLS = [
     tool('plugins_manage', '管理本机插件；install 同时用于更新，更新前显式停用；操作后返回完整清单验证状态。远程暂不支持。',
          {'action': {'type': 'string', 'enum': ['list', 'install', 'enable', 'disable', 'uninstall']},
-          'id': STRING, 'package': STRING}, ['action']),
+          'id': STRING, 'package': {'type': 'string', 'description': 'install 时必填：完整 .dmp 的 base64 编码'}}, ['action']),
     tool('targets_list', '列出当前实例的电脑和设备；使用完整目标 ID'),
     tool('target_status', '查询电脑 PowerShell 能力与权限', TARGET, ['target']),
     tool('windows_exec', '启动独立 PowerShell 任务；不随 Agent 退出停止，用 job_status 查询',
@@ -57,6 +57,7 @@ TOOLS = [
     tool('extension_call', '调用已启用插件或核心扩展动作；先查询extensions_list和extension_capabilities。DB start 自动生成 requestId；超时查询原请求，禁止盲目重试。远程 permission 禁止。',
          {**TARGET, 'tool': STRING, 'action': STRING,
           'arguments': {'type': 'object', 'additionalProperties': True}}, ['target', 'tool', 'action']),
+    tool('instances', '列出本机运行中的 DevMux 实例（instanceId、pid、wsPort）；多实例时用 instanceId 配置 MCP 的 --instance 选择目标实例'),
 ]
 
 

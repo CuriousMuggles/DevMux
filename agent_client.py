@@ -29,7 +29,8 @@ def instances():
 def choose(instance=None):
     candidates = [r for r in instances() if instance is None or r['instanceId'] == instance]
     if len(candidates) != 1:
-        raise RuntimeError('没有可用实例或存在多个实例；使用 instances 查询，再用 --instance 明确选择')
+        ids = ', '.join(r['instanceId'] for r in instances())
+        raise RuntimeError(f'没有可用实例或存在多个实例（可用：{ids or "无"}）；先调用 instances 工具查询，再用 --instance <instanceId> 明确选择（--instance 是 MCP 启动参数）')
     return candidates[0]
 
 

@@ -1,6 +1,6 @@
 # DevMux Agent 接入与电脑 PowerShell
 
-人工操作先读随 Windows ZIP 提供的 [使用说明](使用说明.md)。使用 MCP 时，下载同一 Release 的 `DevMux-3.2.0-source.zip`，解压后安装 `requirements.txt`，注册其中 `agent_mcp.py` 的绝对路径。源码客户端连接已运行 EXE，不要另启动 server.py；原 agent_cli.py/agent_mcp.py 有项目传递导入，不能单独复制。旧版手工生成脚本仅覆盖旧工具表，新增插件管理使用本版源码入口。
+人工操作先读随 Windows ZIP 提供的 [使用说明](使用说明.md)。使用 MCP 时，下载同一 Release 的 `DevMux-3.2.1-source.zip`，解压后安装 `requirements.txt`，注册其中 `agent_mcp.py` 的绝对路径。源码客户端连接已运行 EXE，不要另启动 server.py；原 agent_cli.py/agent_mcp.py 有项目传递导入，不能单独复制。旧版手工生成脚本仅覆盖旧工具表，新增插件管理使用本版源码入口。
 
 本地 Agent 通过 JSON CLI 或 MCP stdio 连接已运行的 DevMux。两者共用应用的设备列表、ADB shell 和中转连接，不启动第二套 ADB 轮询。电脑 PowerShell 和设备 ADB 权限独立。
 

@@ -5,7 +5,7 @@ import json
 import sys
 
 from agent_api import TOOLS, validate
-from agent_client import call
+from agent_client import call, public_instances
 from app_version import APP_VERSION
 
 VERSIONS = ('2025-03-26', '2024-11-05')
@@ -30,7 +30,10 @@ async def dispatch(message, instance=None):
         elif method == 'tools/call':
             name, args = params.get('name'), params.get('arguments') or {}
             validate(name, args)
-            result = await call(name, args, instance)
+            if name == 'instances':
+                result = {'success': True, 'data': {'instances': public_instances()}}
+            else:
+                result = await call(name, args, instance)
             failed = not result.get('success') or result.get('data', {}).get('success') is False
             response['result'] = dict(content=[{'type': 'text', 'text': json.dumps(result, ensure_ascii=False)}], isError=failed)
         else:

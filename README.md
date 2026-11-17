@@ -41,7 +41,7 @@ pip install -r requirements.txt
 python server.py
 ```
 
-源码运行时把 ADB 加入 `PATH`，或用 `ADB_PATH` 指定路径；米家额外依赖见 `requirements-mijia.txt`。
+源码运行时把 ADB 加入 `PATH`，或用 `ADB_PATH` 指定路径；米家额外依赖见 `requirements-mijia.txt`。源码运行的运行数据（含已装插件、凭据）位于仓库根目录的 `devmux-data/`，与发布版 `DevMux.exe` 同目录的 `devmux-data/` 是两套独立数据，互不相通。
 
 ## 文档
 
@@ -59,11 +59,13 @@ python server.py
 
 ```powershell
 python -m pip install -r requirements-build.txt
-# ADB_BUNDLE_DIR 指向完整 Android platform-tools（adb/fastboot/mke2fs 及配套 DLL）
+python -m pip install -r requirements-mijia.txt   # build.spec 会强制检查米家依赖
+# ADB_BUNDLE_DIR 指向完整 Android platform-tools，须含 adb.exe、fastboot.exe、
+# mke2fs.exe、mke2fs.conf 及 AdbWinApi.dll 等配套 DLL，缺任一 build.spec 会报错
 $env:ADB_BUNDLE_DIR = "C:\tool\platform-tools"
 python -m PyInstaller build.spec --clean --noconfirm
 python release_bundle.py --release      # 生成 dist/releases/<版本-时间>/ 交付目录
-python -m tests.run_all                 # 全量验证
+python tests/run_all.py                 # 全量验证
 ```
 
 正式版产物为 `dist\DevMux.exe`，官方插件由 `release_plugins.py` 生成到 `dist/plugin/`，交付文档同步到 `dist/`。完整的发布门槛、证据要求与验收清单在源码仓库的 `docs/internal/发布流程.md`（不随发布包分发）。

@@ -194,7 +194,8 @@ let results = [];
   record('上传可浏览并选择设备目录', first('.fo-path-remote', fileOps).value === '/data');
   click(first('.fo-exec', fileOps));
   await waitFor(() => all('.toast').some(el => el.textContent.includes('adb') && el.textContent.includes('push')));
-  record('上传执行结果可反馈到界面', true);
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('上传完成'));
+  record('上传完成后面板显示结果', first('.fo-status', fileOps).textContent.includes('测试执行成功'));
 
   // 上传目录：目录作为 adb push 源路径，ADB 会递归传输其全部子项。
   click(first('.fo-browse-local', fileOps));
@@ -203,7 +204,27 @@ let results = [];
   record('上传可选择本地文件夹', true);
   click(first('.fo-exec', fileOps));
   await waitFor(() => all('.toast').some(el => el.textContent.includes('upload-folder')));
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('上传完成'));
   record('上传文件夹可执行并反馈结果', true);
+
+  // 慢传输：执行期间显示进行中并禁用按钮，结束后恢复。
+  fill(first('.fo-path-remote', fileOps), '/data/slow');
+  click(first('.fo-exec', fileOps));
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('上传中'));
+  record('传输期间显示进行中并禁用执行按钮', first('.fo-exec', fileOps).disabled
+    && first('.fo-status', fileOps).textContent.includes('上传中'));
+  await waitFor(() => !first('.fo-exec', fileOps).disabled);
+  record('传输结束后执行按钮恢复', first('.fo-status', fileOps).textContent.includes('上传完成'));
+
+  // 失败：结果常驻面板，连续两次同样的失败都必须可见（不进入提示合并）。
+  fill(first('.fo-path-remote', fileOps), '/data/fail');
+  click(first('.fo-exec', fileOps));
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('上传失败'));
+  record('上传失败在面板内可见', first('.fo-status', fileOps).textContent.includes('模拟上传失败'));
+  await waitFor(() => !first('.fo-exec', fileOps).disabled);
+  click(first('.fo-exec', fileOps));
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('上传失败'));
+  record('重复失败仍然可见', first('.fo-status', fileOps).textContent.includes('模拟上传失败'));
 
   // 下载：选择本地目录、选择设备文件并执行。
   click(fileButtons[1]);
@@ -224,6 +245,7 @@ let results = [];
     && first('.fo-path-remote', fileOps).value.includes('/data/second.txt'));
   click(first('.fo-exec', fileOps));
   await waitFor(() => all('.toast').some(el => el.textContent.includes('pull') && el.textContent.includes('fixture.txt')));
+  await waitFor(() => first('.fo-status', fileOps).textContent.includes('下载完成'));
   record('下载执行结果可反馈到界面', true);
 
   // 切换上传/下载后，设备目录弹窗应能再次正常打开。
@@ -798,6 +820,11 @@ def run():
             self._ui_exec_args.append({
                 'args': args, 'argv': argv, 'makeExecutable': make_executable,
             })
+            destination = str(argv[-1]) if isinstance(argv, list) and argv else ''
+            if destination == '/data/fail':
+                return {'success': False, 'output': '模拟上传失败'}
+            if destination == '/data/slow':
+                await asyncio.sleep(0.6)
             return {'success': True, 'output': '测试执行成功'}
 
         async def fake_pick_file(self, multi=False):

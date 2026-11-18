@@ -706,6 +706,7 @@ export function createTerminalPanel(key, device) {
     foLocalPickerMenu: cell.foLocalPickerMenu, foPickFiles: cell.foPickFiles,
     foPickDirectory: cell.foPickDirectory,
     foBrowseRemote: cell.foBrowseRemote,
+    foStatus: cell.foStatus,
     uploadBtn: cell.uploadBtn, downloadBtn: cell.downloadBtn,
     editBtn: cell.editBtn, editOps: cell.editOps, editBrowser: cell.editBrowser,
     editRemote: cell.editRemote, editBrowse: cell.editBrowse,
@@ -880,6 +881,12 @@ export function _buildPanelCell(key, device) {
   `;
   fileOps.appendChild(fileOpsInner);
 
+  // 传输状态行：成功/失败都留在面板里，不依赖会自动消失的提示。
+  const fileOpsStatus = document.createElement('div');
+  fileOpsStatus.className = 'fo-status';
+  fileOpsStatus.style.display = 'none';
+  fileOps.appendChild(fileOpsStatus);
+
   // Device browser dropdown (hidden by default)
   const devBrowser = document.createElement('div');
   devBrowser.className = 'device-browser';
@@ -996,6 +1003,7 @@ export function _buildPanelCell(key, device) {
     foBrowseLocal: fileOps.querySelector('.fo-browse-local'),
     foLocalPicker: fileOps.querySelector('.fo-local-picker'),
     foLocalPickerMenu: fileOps.querySelector('.fo-local-picker-menu'),
+    foStatus: fileOpsStatus,
     foPickFiles: fileOps.querySelector('.fo-pick-files'),
     foPickDirectory: fileOps.querySelector('.fo-pick-directory'),
     foBrowseRemote: fileOps.querySelector('.fo-browse-remote'),
@@ -1120,6 +1128,14 @@ export function _wireFileOps(key, cell) {
   const t = state.terminals[key];
   const { fileOps } = t;
 
+  // 传输结果留在面板内：成功提示不弹窗，失败提示会合并，只有这里能稳定看到结果。
+  const setTransferStatus = (text, kind = '') => {
+    t.foStatus.textContent = text || '';
+    t.foStatus.title = text || '';
+    t.foStatus.dataset.kind = kind;
+    t.foStatus.style.display = text ? 'block' : 'none';
+  };
+
   const toggleFileOps = (op) => {
     reportUiAction('file-op-toggle', `${key}:${op}`);
     const active = fileOps.style.display !== 'none';
@@ -1136,6 +1152,7 @@ export function _wireFileOps(key, cell) {
     t.devBrowser.style.display = 'none';
     fileOps.style.display = 'flex';
     fileOps.dataset.op = op;
+    setTransferStatus('');
     const arrow = fileOps.querySelector('.fo-arrow');
     if (op === 'upload') {
       arrow.textContent = '→';
@@ -1465,12 +1482,17 @@ export function _wireFileOps(key, cell) {
   });
 
   t.foExec.addEventListener('click', async () => {
+    if (t.foExec.disabled) return;
     const op = t.fileOps.dataset.op || 'upload';
     const localPath = t.foLocal.value.trim();
     const remotePath = t.foRemote.value.trim();
     const localPaths = selectedLocalPaths.length ? selectedLocalPaths : (localPath ? [localPath] : []);
     const remotePaths = selectedRemotePaths.length ? selectedRemotePaths : (remotePath ? [remotePath] : []);
-    if (!localPaths.length || !remotePaths.length) return;
+    const opName = op === 'upload' ? '上传' : '下载';
+    if (!localPaths.length || !remotePaths.length) {
+      setTransferStatus(`${opName}失败：请先选择本地路径和设备路径`, 'error');
+      return;
+    }
     const tidMatch = t.key.match(/tid=(\d+)/);
     const transportArgs = tidMatch ? ['-t', tidMatch[1]] : ['-s', t.device.serial];
     const transferArgs = op === 'upload'
@@ -1481,11 +1503,27 @@ export function _wireFileOps(key, cell) {
     savePathHistory(t.key, op, localPaths[0], remotePaths[0]);
     const opLabel = op === 'upload' ? '↑ 上传' : '↓ 下载';
     showToast('info', `${opLabel} ${t.device.serial}`, `adb ${args}`);
-    const result = await callWS(
-      'exec-adb', { key: t.key, args, argv: transferArgs, makeExecutable }, isRemoteDevice(t.device) ? 600000 : 60000
-    );
-    if (result.success) { showToast('success', `${opLabel} 完成`, result.output || '执行成功'); }
-    else { showToast('error', `${opLabel} 失败`, result.output || '执行出错'); }
+    setTransferStatus(`${opName}中…`, 'running');
+    t.foExec.disabled = true;
+    try {
+      // 传输耗时随文件大小增长，前端超时放宽到 10 分钟；后端另有自己的传输超时。
+      const result = await callWS(
+        'exec-adb', { key: t.key, args, argv: transferArgs, makeExecutable }, 600000
+      );
+      const output = String(result.output || '').trim();
+      if (result.success) {
+        setTransferStatus(`${opName}完成：${output || '执行成功'}`, 'success');
+        showToast('success', `${opLabel} 完成`, output || '执行成功');
+      } else {
+        const detail = output === 'timeout'
+          ? '超时未返回结果，传输可能仍在后台进行'
+          : (output || '执行出错');
+        setTransferStatus(`${opName}失败：${detail}`, 'error');
+        showToast('error', `${opLabel} 失败`, detail);
+      }
+    } finally {
+      t.foExec.disabled = false;
+    }
   });
 
   // ====== Log recording ======

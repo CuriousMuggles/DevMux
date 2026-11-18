@@ -193,6 +193,9 @@ def publish_gitee(tag, version, paths):
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
+        release = None
+    # Gitee 对不存在的发行版返回 200 + null，不能当成已存在。
+    if not release:
         release = gitee_api('POST', '/releases', token=token, timeout=120, payload={
             'tag_name': tag, 'name': 'DevMux ' + version, 'body': release_notes(version),
             'target_commitish': 'master', 'prerelease': False})

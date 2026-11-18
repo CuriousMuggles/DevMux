@@ -1115,12 +1115,31 @@ html, body {
 .cell-toolbar-file-ops {
   display: none;
   flex-shrink: 0;
+  flex-wrap: wrap;
   padding: 4px 6px 6px;
   gap: 4px;
   align-items: center;
   border-top: 1px solid var(--border);
   position: relative;
 }
+
+/* 传输结果常驻在面板内，成功提示不弹窗后靠这里让用户看到结果。 */
+.fo-status {
+  flex-basis: 100%;
+  margin-top: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 64px;
+  overflow-y: auto;
+}
+
+.fo-status[data-kind="success"] { color: #a6e3a1; }
+.fo-status[data-kind="error"] { color: #f38ba8; }
 
 .file-ops-inner {
   display: flex;
@@ -1207,6 +1226,11 @@ html, body {
 .file-ops-inner .fo-exec:hover {
   background: rgba(166, 227, 161, 0.15);
   color: #a6e3a1;
+}
+
+.file-ops-inner .fo-exec:disabled {
+  opacity: .45;
+  cursor: progress;
 }
 
 /* Command input area at bottom of cell */

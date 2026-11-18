@@ -262,6 +262,7 @@ class ControllerWindowsMixin:
             if (self.node is not node or expected_endpoint != node._connection_endpoint(peer_id)
                     or expected_generation != (current_record.connectionId if current_record else '')):
                 return {'success': False, 'output': '文件准备期间从机实例或连接已变化，请重新选择设备上传/下载'}
+            transfer_started = time.monotonic()
             result = node.submit(peer_id, relay.KIND_WINDOWS_TRANSFER if computer else relay_transfer.KIND_TRANSFER,
                                  device={} if computer else {'key': local_key}, payload=payload,
                                  timeout=relay_transfer.TIMEOUT + 30)
@@ -271,6 +272,9 @@ class ControllerWindowsMixin:
                     reply['output'] += '；请升级从机以支持文件上传下载'
                 self._push_event({'kind': 'error', 'text': f'远程文件传输失败：{reply["output"]}'})
                 return reply
+            if operation == 'push':
+                self.log('RELAY', f'远程上传完成 {round((time.monotonic() - transfer_started) * 1000)}ms：'
+                                  f'{remote_key} → {tokens[-1]}')
             if operation == 'pull':
                 with tempfile.TemporaryDirectory(prefix='DevMux-download-') as work:
                     started = time.monotonic()

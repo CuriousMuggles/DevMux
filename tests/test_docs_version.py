@@ -15,10 +15,10 @@ import release_bundle
 import app_version
 
 ROOT = Path(__file__).resolve().parent.parent
-GUIDE = ROOT / '使用说明.md'
-AGENT = ROOT / 'Agent接入说明.md'
-NOTES = ROOT / '发布说明.md'
-RELEASING = ROOT / 'docs' / 'internal' / '发布流程.md'
+GUIDE = ROOT / 'docs' / '用户' / '使用说明.md'
+AGENT = ROOT / 'docs' / '用户' / '开发者说明.md'
+NOTES = ROOT / 'docs' / '用户' / '发布说明.md'
+RELEASING = ROOT / 'docs' / 'internal' / '流程' / '发布流程.md'
 INDEX = ROOT / 'docs' / '文档索引.md'
 
 SOURCE_ZIP = re.compile(r'DevMux-(\d+\.\d+\.\d+)-source\.zip')
@@ -90,20 +90,21 @@ class DocsVersionTests(unittest.TestCase):
         self.assertIn(f'v{app_version.APP_VERSION}', read(RELEASING))
 
     def test_shipped_documents_exist(self):
-        missing = [name for name in release_bundle.DOCUMENTS if not (ROOT / name).is_file()]
+        missing = [name for name in release_bundle.DOCUMENTS
+                   if not (ROOT / doc_links.source_of(name)).is_file()]
         self.assertEqual(missing, [], f'发布清单里的文档不存在：{missing}')
 
     def test_shipped_documents_links_resolve_inside_the_set(self):
         """随包文档的相对链接必须落在发布清单内，否则解压后的 ZIP 会有死链。"""
-        problems = doc_links.check_paths([ROOT / name for name in release_bundle.DOCUMENTS], ROOT)
-        problems += doc_links.check_closed_set(list(release_bundle.DOCUMENTS), ROOT)
+        problems = doc_links.check_delivery(list(release_bundle.DOCUMENTS), ROOT)
         readable = [f'{path.name} -> {target}' for path, target in problems]
         self.assertEqual(readable, [], '随包文档存在断链或指向发布集之外：' + '; '.join(readable))
 
     def test_every_shipped_document_is_in_the_index(self):
         """新增随包文档必须登记到 docs/文档索引.md，避免文档地图失真。"""
         index = read(INDEX)
-        missing = [name for name in release_bundle.DOCUMENTS if name not in index]
+        missing = [name for name in release_bundle.DOCUMENTS
+                   if doc_links.source_of(name) not in index and name not in index]
         self.assertEqual(missing, [], f'文档索引未登记：{missing}')
 
     def test_document_filenames_are_chinese(self):
@@ -118,8 +119,9 @@ class DocsVersionTests(unittest.TestCase):
     def test_internal_docs_stay_out_of_the_package(self):
         internal = [name for name in release_bundle.DOCUMENTS if 'internal' in name]
         self.assertEqual(internal, [], f'内部文档不应随包分发：{internal}')
-        problems = [name for name in ('docs/internal/发布流程.md', 'docs/internal/跨机中转设计.md')
-                    if not (ROOT / name).is_file()]
+        expected = ('发布流程.md', '跨机中转设计.md')
+        found = {path.name for path in (ROOT / 'docs' / 'internal').rglob('*.md')}
+        problems = [name for name in expected if name not in found]
         self.assertEqual(problems, [], f'内部文档不在 docs/internal/：{problems}')
 
 

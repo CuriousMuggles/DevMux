@@ -55,7 +55,7 @@ page.body.append(form,ui.button('调用后端',async()=>{
   output.appendLine(result.text);
 },{variant:'primary'}),output);
 '''.replace('TITLE',json.dumps(name or identifier,ensure_ascii=False)),encoding='utf-8')
-    (path/'README.md').write_text('# '+(name or identifier)+'\n\n从 DevMux 仓库运行：\n\n```powershell\npython plugin_dev.py check "'+str(path)+'"\npython plugin_dev.py serve "'+str(path)+'"\npython plugin_dev.py pack "'+str(path)+'" dist/'+identifier+'.dmp\n```\n\n宿主API、资源、权限及生命周期参见 docs/插件开发说明.md。\n',encoding='utf-8')
+    (path/'README.md').write_text('# '+(name or identifier)+'\n\n从 DevMux 仓库运行：\n\n```powershell\npython plugin_dev.py check "'+str(path)+'"\npython plugin_dev.py serve "'+str(path)+'"\npython plugin_dev.py pack "'+str(path)+'" dist/'+identifier+'.dmp\n```\n\n宿主API、资源、权限及生命周期参见 docs/用户/开发者说明.md。\n',encoding='utf-8')
     (path/'AGENTS.md').write_text('''# 插件开发约定
 
 - 后端通过 create_plugin(root) 和 call(action, arguments) 提供业务接口，可继承 plugin_sdk.Plugin。

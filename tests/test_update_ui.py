@@ -9,8 +9,36 @@ from tests.test_relay_row_layout import _edge_executable, _free_port, _start_edg
 from websockets.sync.client import connect
 
 
+class _FakeWindow:
+    """模拟 pywebview 窗口：只记录 confirm_close 与是否被销毁。"""
+
+    def __init__(self):
+        self.confirm_close = True
+        self.destroyed = False
+
+    def destroy(self):
+        self.destroyed = True
+
+
+def check_close_for_update():
+    """升级退出已由升级卡片确认过，关窗时不能再弹系统退出确认。"""
+    import types
+    import server
+    window = _FakeWindow()
+    owner = types.SimpleNamespace(native_window=window)
+    assert server.ManagerServer.close_for_update(owner) is True
+    assert window.confirm_close is False
+    for _ in range(40):
+        if window.destroyed:
+            break
+        time.sleep(.1)
+    assert window.destroyed, '升级退出没有关闭窗口'
+    print('  [PASS] 升级退出跳过系统关闭确认')
+
+
 def run():
     import server
+    check_close_for_update()
     old = server.HTTP_PORT
     server.HTTP_PORT = _free_port()
     httpd = edge = None

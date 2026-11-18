@@ -13,6 +13,9 @@ from app_version import APP_VERSION
 MANIFEST_URLS = (
     'https://github.com/CuriousMuggles/DevMux/releases/latest/download/latest.json',
 )
+# GitHub 不可达时回退到 Gitee：同一个 Release 里也上传 latest.json，靠 API 找到最新发行版。
+GITEE_REPOSITORY = 'liudaiyang/DevMux'
+GITEE_LATEST_RELEASE = 'https://gitee.com/api/v5/repos/' + GITEE_REPOSITORY + '/releases/latest'
 MANIFEST_LIMIT = 512 * 1024
 
 
@@ -32,22 +35,46 @@ def build_request(url):
     })
 
 
+def _read_manifest(url, timeout):
+    with urllib.request.urlopen(build_request(url), timeout=timeout) as response:
+        status = getattr(response, 'status', 200)
+        if status and status != 200:
+            raise ValueError('HTTP ' + str(status))
+        payload = response.read(MANIFEST_LIMIT + 1)
+    if len(payload) > MANIFEST_LIMIT:
+        raise ValueError('清单过大')
+    manifest = json.loads(payload.decode('utf-8'))
+    if not isinstance(manifest, dict) or manifest.get('schema') != 1:
+        raise ValueError('清单格式不支持')
+    return manifest
+
+
+def gitee_manifest_url(timeout=8):
+    """从 Gitee 最新发行版里取 latest.json 附件的下载地址。"""
+    with urllib.request.urlopen(build_request(GITEE_LATEST_RELEASE), timeout=timeout) as response:
+        payload = response.read(MANIFEST_LIMIT + 1)
+    release = json.loads(payload.decode('utf-8'))
+    for asset in release.get('assets') or []:
+        if asset.get('name') == 'latest.json':
+            url = str(asset.get('browser_download_url') or '').strip()
+            if url:
+                return url
+    raise ValueError('Gitee 最新发行版缺 latest.json 附件')
+
+
 def fetch_manifest(timeout=8):
     """返回 (清单, 来源地址)；全部来源失败时抛 RuntimeError 并带上每个来源的原因。"""
     errors = []
     for url in manifest_urls():
         try:
-            with urllib.request.urlopen(build_request(url), timeout=timeout) as response:
-                status = getattr(response, 'status', 200)
-                if status and status != 200:
-                    raise ValueError('HTTP ' + str(status))
-                payload = response.read(MANIFEST_LIMIT + 1)
-            if len(payload) > MANIFEST_LIMIT:
-                raise ValueError('清单过大')
-            manifest = json.loads(payload.decode('utf-8'))
-            if not isinstance(manifest, dict) or manifest.get('schema') != 1:
-                raise ValueError('清单格式不支持')
-            return manifest, url
+            return _read_manifest(url, timeout), url
         except Exception as error:
             errors.append(url + ': ' + str(error))
+    # 显式注入的清单（测试/内网）是唯一来源，不再去 Gitee 猜。
+    if not os.environ.get('DEVMUX_UPDATE_MANIFEST', '').strip():
+        try:
+            url = gitee_manifest_url(timeout)
+            return _read_manifest(url, timeout), url
+        except Exception as error:
+            errors.append('Gitee: ' + str(error))
     raise RuntimeError('更新清单不可用（' + '；'.join(errors) + '）')

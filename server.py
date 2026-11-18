@@ -1862,11 +1862,16 @@ class ManagerServer(AdbServiceMixin):
         window = self.native_window
         if window is None:
             return False
+        # 升级退出已在升级卡片里确认过（点击「立即重启升级」），这里跳过系统退出确认，
+        # 否则关窗时还会再弹一次「Do you really want to quit?」，多一步且容易误解成失败。
+        previous = getattr(window, 'confirm_close', False)
+        window.confirm_close = False
 
         def destroy():
             try:
                 window.destroy()
             except Exception:
+                window.confirm_close = previous
                 log('UPDATE', '关闭窗口失败: ' + traceback.format_exc())
 
         threading.Timer(0.6, destroy).start()

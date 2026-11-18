@@ -86,9 +86,9 @@ def run():
                     time.sleep(.1)
                 assert evaluate("JSON.stringify(window.updateApplied)==='[\"example\"]'")
                 for _ in range(40):
-                    if evaluate("[...document.querySelectorAll('.toast-body')].some(node=>node.textContent.includes('已更新 1 个插件'))"): break
+                    if evaluate("document.querySelector('#plugin-manager [role=status]').textContent.includes('已更新 1 个插件')"): break
                     time.sleep(.1)
-                assert evaluate("[...document.querySelectorAll('.toast-body')].some(node=>node.textContent.includes('已更新 1 个插件'))")
+                assert evaluate("document.querySelector('#plugin-manager [role=status]').textContent.includes('已更新 1 个插件')")
                 evaluate("callWS=window.beforeUpdate")
                 assert evaluate("document.querySelector('[data-plugin-menu=example]').textContent.includes('Example')")
                 evaluate("document.querySelector('[data-plugin-menu=example]').click()")

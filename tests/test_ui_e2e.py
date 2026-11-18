@@ -193,7 +193,7 @@ let results = [];
   click(first('.dev-browser-select-cur', fileOps));
   record('上传可浏览并选择设备目录', first('.fo-path-remote', fileOps).value === '/data');
   click(first('.fo-exec', fileOps));
-  await waitFor(() => all('.toast').some(el => el.textContent.includes('上传') && el.textContent.includes('完成')));
+  await waitFor(() => all('.toast').some(el => el.textContent.includes('adb') && el.textContent.includes('push')));
   record('上传执行结果可反馈到界面', true);
 
   // 上传目录：目录作为 adb push 源路径，ADB 会递归传输其全部子项。
@@ -202,7 +202,7 @@ let results = [];
   await waitFor(() => first('.fo-path-local', fileOps).value === 'C:\\ui-self-test\\upload-folder');
   record('上传可选择本地文件夹', true);
   click(first('.fo-exec', fileOps));
-  await waitFor(() => all('.toast').some(el => el.textContent.includes('上传') && el.textContent.includes('完成')));
+  await waitFor(() => all('.toast').some(el => el.textContent.includes('upload-folder')));
   record('上传文件夹可执行并反馈结果', true);
 
   // 下载：选择本地目录、选择设备文件并执行。
@@ -223,7 +223,7 @@ let results = [];
   record('下载确认可写回多文件路径', first('.fo-path-remote', fileOps).value.includes('/data/fixture.txt')
     && first('.fo-path-remote', fileOps).value.includes('/data/second.txt'));
   click(first('.fo-exec', fileOps));
-  await waitFor(() => all('.toast').some(el => el.textContent.includes('下载') && el.textContent.includes('完成')));
+  await waitFor(() => all('.toast').some(el => el.textContent.includes('pull') && el.textContent.includes('fixture.txt')));
   record('下载执行结果可反馈到界面', true);
 
   // 切换上传/下载后，设备目录弹窗应能再次正常打开。

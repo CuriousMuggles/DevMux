@@ -1,4 +1,4 @@
-"""RelayController 的选路执行面（B7 拆分，见 docs/优化建议清单.md）。
+"""RelayController 的选路执行面（B7 拆分，见 docs/internal/流程/优化建议清单.md）。
 
 按设备 key 决定「本机直连」还是「经从机执行」，并把操作端的设备选择符剥掉。
 共享 ``self``：远端客户端缓存与关闭队列都由 RelayController.__init__ 建立。

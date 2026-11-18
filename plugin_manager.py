@@ -74,7 +74,7 @@ class PluginManager:
                 try:
                     decoded = base64.b64decode(raw, validate=True)
                 except binascii.Error:
-                    raise ValueError('package 不是合法的 base64；请传入 .dmp 文件的 base64 编码（生成方式见 Agent 接入说明）')
+                    raise ValueError('package 不是合法的 base64；请传入 .dmp 文件的 base64 编码（生成方式见开发者说明）')
                 package = io.BytesIO(decoded)
                 # Running versions must be explicitly stopped before replacement.
                 import zipfile

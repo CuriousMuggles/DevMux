@@ -1,4 +1,4 @@
-"""RelayController 的信任与配对面（B7 拆分，见 docs/优化建议清单.md）。
+"""RelayController 的信任与配对面（B7 拆分，见 docs/internal/流程/优化建议清单.md）。
 
 主控确认/撤销从机，从机维护自己的配对记录。准入判定本身在 relay_pairing。
 共享 ``self``：配置、信任库与配对库都由 RelayController.__init__ 建立。

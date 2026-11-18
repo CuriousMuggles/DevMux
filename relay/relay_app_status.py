@@ -1,4 +1,4 @@
-"""RelayController 的状态与事件面（B7 拆分，见 docs/优化建议清单.md）。
+"""RelayController 的状态与事件面（B7 拆分，见 docs/internal/流程/优化建议清单.md）。
 
 把节点事件攒成本机可见的流水，并输出前端可直接渲染的状态快照。
 共享 ``self``：状态缓存（上次签名、事件队列）都由 RelayController.__init__ 建立。

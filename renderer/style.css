@@ -1536,7 +1536,27 @@ html, body {
 
 .toast.success { border-left: 3px solid #a6e3a1; }
 .toast.error   { border-left: 3px solid #f38ba8; }
+.toast.warning { border-left: 3px solid #f9e2af; }
 .toast.info    { border-left: 3px solid #89b4fa; }
+
+/* 重复提示只留一个小角标：order:-1 让它固定在这列（flex column-reverse）的底部。 */
+.toast-badge {
+  order: -1;
+  align-self: flex-end;
+  pointer-events: auto;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-dark);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.toast-badge:hover { color: var(--text); }
 
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }

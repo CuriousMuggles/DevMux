@@ -35,7 +35,7 @@ class ReleaseBundleTests(unittest.TestCase):
             actual = {p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()}
             self.assertEqual(listed, actual - {'SHA256SUMS.txt'})
             self.assertFalse(any('devmux-data' in name or '.log' in name for name in actual))
-            self.assertTrue({'README.md','使用说明.md','Agent接入说明.md','DevMux.exe'} <= actual)
+            self.assertTrue({'README.md','使用说明.md','开发者说明.md','DevMux.exe'} <= actual)
 
     def test_source_hashes_exclude_runtime_and_build_output(self):
         hashes = release_bundle.source_hashes()

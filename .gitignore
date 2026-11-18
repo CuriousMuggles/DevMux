@@ -52,6 +52,8 @@ DEVELOPMENT_LOG.html
 SELF_TEST_LOG.md
 docs/管理文档/
 docs/报告/
+# 方案评审运行记录：每个任务一个目录（六张卡），仅本地保存、不入库
+docs/runs/
 
 devmux-data/
 .worktrees/

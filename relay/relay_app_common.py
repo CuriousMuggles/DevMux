@@ -1,4 +1,4 @@
-"""RelayController 与各 mixin 共享的常量与纯函数（B7 拆分，见 docs/优化建议清单.md）。
+"""RelayController 与各 mixin 共享的常量与纯函数（B7 拆分，见 docs/internal/流程/优化建议清单.md）。
 
 为什么单独成模块：mixin 不能反向 import ``relay_app``（那会在导入期成环），而
 这些常量原本住在 ``relay_app`` 里。下沉到这里之后，方向是

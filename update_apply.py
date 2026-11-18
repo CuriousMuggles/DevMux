@@ -23,6 +23,7 @@ UNLOCK_TIMEOUT_SECONDS = 15
 START_RETRIES = 3
 START_RETRY_DELAY_SECONDS = 2
 PLUGIN_SUFFIX = '.dmp'
+METADATA_FILES = ('BUILD-INFO.json', 'SHA256SUMS.txt')
 
 
 def clean_environment():
@@ -85,6 +86,17 @@ def install_plugins(staged, target):
     return installed
 
 
+def install_metadata(staged, target):
+    """把构建信息与校验清单换成新版；暂存目录缺这两份时保持原样。"""
+    installed = []
+    for name in METADATA_FILES:
+        source = Path(staged) / name
+        if source.is_file():
+            shutil.copy2(source, Path(target) / name)
+            installed.append(name)
+    return installed
+
+
 def swap(staged, target, result_path=None):
     """改名 → 落新文件 → 启动新版；任一步失败都把旧版改回来。
 
@@ -129,6 +141,9 @@ def swap(staged, target, result_path=None):
         if result_path:
             write_result(result_path, payload)
         return payload
+    # 新版已经起来了再换元数据：安装目录的 BUILD-INFO/SHA256SUMS 要跟着版本走，
+    # 否则目录里还写着旧版本，事后核对升级结果只能靠窗口标题和 exe 摘要。
+    install_metadata(staged, target)
     payload = {'status': 'installed', 'started': True,
                'backup': backup.name if backup.exists() else '',
                'plugins': plugins, 'target': str(executable)}

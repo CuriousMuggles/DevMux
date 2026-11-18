@@ -19,6 +19,7 @@ from release_plugins import OFFICIAL_PLUGINS, build_official_plugins, catalog
 
 ROOT = Path(__file__).resolve().parent
 REPOSITORY = 'CuriousMuggles/DevMux'
+GITEE_REPOSITORY = 'liudaiyang/DevMux'
 
 
 def git(*args):
@@ -112,12 +113,13 @@ def sync_runtime_docs(root=None):
     if not runtime.is_dir():
         return report
     for name in DOCUMENTS:
-        source = ROOT / name
         target = runtime / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        if target.is_file() and target.read_bytes() == source.read_bytes():
+        # 交付副本里的仓库根相对链接已改写为交付相对路径，不能直接拷源文件。
+        data = doc_links.delivery_bytes(name, ROOT)
+        if target.is_file() and target.read_bytes() == data:
             continue
-        shutil.copy2(source, target)
+        target.write_bytes(data)
         report['updated'].append(name)
     for name in STALE_RUNTIME_DOCS:
         target = runtime / name
@@ -140,12 +142,14 @@ def check_runtime_docs(runtime=None):
 
 
 def download_urls(tag, filename):
-    """下载地址：主地址用 GitHub 的固定 release 路径；镜像由环境变量追加。
+    """下载地址：GitHub 优先，Gitee 同 tag 的发行版附件兜底，再由环境变量追加镜像。
 
-    镜像的 URL 形态（尤其 Gitee 的附件地址）需要发布时确认，不在这里猜，
-    宁可让运维用模板注入，也不把不确定的规则固化进客户端。
+    GitHub 在国内经常连不上（尤其是 release 附件所在的 CDN），而 Gitee 上的同一份
+    发行版对匿名下载可用，所以两条地址都写进清单，客户端按顺序回退。
+    其它镜像的 URL 形态需要发布时确认，仍用模板注入，不在这里猜。
     """
-    urls = [f'https://github.com/{REPOSITORY}/releases/download/{tag}/{filename}']
+    urls = [f'https://github.com/{REPOSITORY}/releases/download/{tag}/{filename}',
+            f'https://gitee.com/{GITEE_REPOSITORY}/releases/download/{tag}/{filename}']
     for template in os.environ.get('DEVMUX_DOWNLOAD_MIRRORS', '').split(','):
         template = template.strip()
         if template:
@@ -179,7 +183,7 @@ def stage_delivery(output, binary, info):
     for name in DOCUMENTS:
         target = output / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / name, target)
+        target.write_bytes(doc_links.delivery_bytes(name, ROOT))
     write_json(output / 'BUILD-INFO.json', info)
     files = sorted(path for path in output.rglob('*') if path.is_file())
     (output / 'SHA256SUMS.txt').write_text(''.join(
@@ -190,8 +194,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release', action='store_true', help='require clean source at the version tag')
     options = parser.parse_args()
-    problems = doc_links.check_paths([ROOT / name for name in DOCUMENTS], ROOT)
-    problems += doc_links.check_closed_set(list(DOCUMENTS), ROOT)
+    problems = doc_links.check_delivery(list(DOCUMENTS), ROOT)
     if problems:
         raise RuntimeError('随包文档链接不闭合，先修文档：' + '; '.join(
             '%s -> %s' % (path.name if path.is_absolute() else path, target) for path, target in problems))

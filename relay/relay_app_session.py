@@ -1,4 +1,4 @@
-"""RelayController 的远端会话对齐（B7 拆分，见 docs/优化建议清单.md）。
+"""RelayController 的远端会话对齐（B7 拆分，见 docs/internal/流程/优化建议清单.md）。
 
 在线从机的每台设备各保持一条会话；掉线/回来自动恢复，失败退避而不放弃。
 共享 ``self``：会话表、执行器与重试计数都由 RelayController.__init__ 建立。

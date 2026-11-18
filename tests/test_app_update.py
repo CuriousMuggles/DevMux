@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,6 +11,7 @@ import zipfile
 
 from app_update import AppUpdater
 import update_apply
+import update_feed
 
 
 def build_zip(path, version, extra=None, info_status='release'):
@@ -195,6 +197,30 @@ class AppUpdateTest(unittest.TestCase):
         saved = json.loads((self.temp / 'result.json').read_text(encoding='utf-8'))
         self.assertEqual(saved['status'], 'installed')
 
+    def test_swap_updates_build_metadata(self):
+        # 安装目录的 BUILD-INFO 必须跟着版本走，否则事后核对升级结果只能看窗口标题。
+        staged = self.temp / 'staged'
+        staged.mkdir()
+        (staged / 'DevMux.exe').write_bytes(b'new-binary')
+        (staged / 'BUILD-INFO.json').write_text('{"version": "9.9.9"}', encoding='utf-8')
+        (staged / 'SHA256SUMS.txt').write_text('sums-of-9.9.9', encoding='utf-8')
+        (self.install / 'BUILD-INFO.json').write_text('{"version": "3.2.2"}', encoding='utf-8')
+        with patch.object(update_apply, 'launch', return_value=True):
+            update_apply.swap(staged, self.install, self.temp / 'result.json')
+        self.assertIn('9.9.9', (self.install / 'BUILD-INFO.json').read_text(encoding='utf-8'))
+        self.assertEqual((self.install / 'SHA256SUMS.txt').read_text(encoding='utf-8'), 'sums-of-9.9.9')
+
+    def test_rollback_keeps_old_metadata(self):
+        staged = self.temp / 'staged'
+        staged.mkdir()
+        (staged / 'DevMux.exe').write_bytes(b'broken')
+        (staged / 'BUILD-INFO.json').write_text('{"version": "9.9.9"}', encoding='utf-8')
+        (self.install / 'BUILD-INFO.json').write_text('{"version": "3.2.2"}', encoding='utf-8')
+        with patch.object(update_apply, 'launch', return_value=False):
+            result = update_apply.swap(staged, self.install, self.temp / 'result.json')
+        self.assertEqual(result['status'], 'rolled-back')
+        self.assertIn('3.2.2', (self.install / 'BUILD-INFO.json').read_text(encoding='utf-8'))
+
     def test_swap_rolls_back_when_new_binary_cannot_start(self):
         staged = self.temp / 'staged'
         staged.mkdir()
@@ -245,5 +271,47 @@ class AppUpdateTest(unittest.TestCase):
         self.assertTrue(self.updater.status()['result']['acknowledged'])
 
 
+class UpdateFeedFallbackTest(unittest.TestCase):
+    """GitHub 不通时清单要能回退到 Gitee。"""
+
+    def test_falls_back_to_gitee_when_github_unreachable(self):
+        manifest = {'schema': 1, 'version': '9.9.9'}
+        seen = []
+
+        def read(url, timeout):
+            seen.append(url)
+            if 'github.com' in url:
+                raise OSError('无法连接')
+            return manifest
+
+        with patch.object(update_feed, 'manifest_urls',
+                          return_value=('https://github.com/x/latest.json',)), \
+                patch.object(update_feed, '_read_manifest', side_effect=read), \
+                patch.object(update_feed, 'gitee_manifest_url',
+                             return_value='https://gitee.com/x/latest.json'):
+            data, source = update_feed.fetch_manifest()
+
+        self.assertEqual(data, manifest)
+        self.assertEqual(source, 'https://gitee.com/x/latest.json')
+        self.assertEqual(seen, ['https://github.com/x/latest.json',
+                                'https://gitee.com/x/latest.json'])
+
+    def test_explicit_manifest_does_not_fall_back(self):
+        # 测试或内网注入的清单是唯一来源，失败就如实报错，不去网上猜。
+        with patch.dict(os.environ, {'DEVMUX_UPDATE_MANIFEST': 'file:///tmp/latest.json'}):
+            with patch.object(update_feed, 'manifest_urls',
+                              return_value=('file:///tmp/latest.json',)), \
+                    patch.object(update_feed, '_read_manifest', side_effect=OSError('坏清单')), \
+                    patch.object(update_feed, 'gitee_manifest_url',
+                                 side_effect=AssertionError('不应访问 Gitee')):
+                with self.assertRaises(RuntimeError):
+                    update_feed.fetch_manifest()
+
+
+def run():
+    suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
+    return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
+
+
 if __name__ == '__main__':
-    unittest.main()
+    raise SystemExit(0 if run() else 1)

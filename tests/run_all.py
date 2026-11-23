@@ -105,6 +105,7 @@ TESTS = [
     ('Serial Read Latency', 'tests.test_serial_latency'),
     ('Serial Character Pacing', 'tests.test_serial_pacing'),
     ('Serial Remote / Agent', 'tests.test_serial_remote'),
+    ('Serial Remote Push', 'tests.test_serial_push'),
     ('Command Column Editor UI', 'tests.test_command_column_ui'),
     ('Serial Window UI', 'tests.test_serial_ui'),
     ('Serial Command Input', 'tests.test_serial_command_input'),

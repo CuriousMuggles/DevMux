@@ -284,6 +284,9 @@ def start_http_server():
 # ---------------------------------------------------------------------------
 # WebSocket + ADB Worker coordinator
 # ---------------------------------------------------------------------------
+_SERIAL_OWNER_INIT_LOCK = threading.Lock()
+
+
 class ManagerServer(AdbServiceMixin):
     def __init__(self):
         self.clients: Set[WebSocketServerProtocol] = set()
@@ -310,6 +313,9 @@ class ManagerServer(AdbServiceMixin):
         # key -> {path, timestamps, at_line_start}
         self._recording_sessions: dict[str, dict] = {}
         self._recording_lock = threading.Lock()
+        # 远程串口推送的属主登记：identity -> {ws}，线程安全，避免跨线程遍历 clients。
+        self._serial_owners: dict[tuple, set] = {}
+        self._serial_owners_lock = threading.Lock()
         from serial_recording import SerialRecordings
         self.serial_recordings = SerialRecordings(strip_ansi, add_recording_timestamps)
         self._edit_sessions: dict[str, dict] = {}
@@ -331,6 +337,7 @@ class ManagerServer(AdbServiceMixin):
             on_devices_changed=self._on_relay_devices_changed,
             on_status=self._on_relay_status,
             on_terminal_output=self._on_terminal_output,
+            on_serial_data=self._on_serial_data,
             on_terminal_exit=self._on_relay_terminal_exit,
             on_event=self._on_relay_event,
             on_peer_request=self._on_relay_peer_request,
@@ -490,6 +497,64 @@ class ManagerServer(AdbServiceMixin):
         if sessions:
             sessions.refresh_control_meta(key)
 
+    # --- 远程串口推送：属主登记与录制 ---
+    def _serial_owners_state(self):
+        """测试会用 __new__ 构造管理器；这里按需补齐登记表与锁。"""
+        state = getattr(self, '_serial_owners', None)
+        lock = getattr(self, '_serial_owners_lock', None)
+        if state is None or lock is None:
+            with _SERIAL_OWNER_INIT_LOCK:
+                state = getattr(self, '_serial_owners', None)
+                lock = getattr(self, '_serial_owners_lock', None)
+                if state is None:
+                    state = {}
+                    self._serial_owners = state
+                if lock is None:
+                    lock = threading.Lock()
+                    self._serial_owners_lock = lock
+        return state, lock
+
+    def _serial_owner_add(self, identity, ws):
+        state, lock = self._serial_owners_state()
+        with lock:
+            state.setdefault(identity, set()).add(ws)
+
+    def _serial_owner_remove(self, identity, ws):
+        state, lock = self._serial_owners_state()
+        with lock:
+            owners = state.get(identity)
+            if owners is None:
+                return
+            owners.discard(ws)
+            if not owners:
+                state.pop(identity, None)
+
+    def _serial_owner_drop_ws(self, ws):
+        state, lock = self._serial_owners_state()
+        with lock:
+            for identity in list(state):
+                owners = state[identity]
+                owners.discard(ws)
+                if not owners:
+                    state.pop(identity, None)
+
+    def _on_serial_data(self, payload: dict):
+        """远程串口读取线程的回调：先按到达顺序写日志，再按属主筛选广播。"""
+        identity = tuple(payload.get('identity') or ())
+        state, lock = self._serial_owners_state()
+        error = ''
+        if identity:
+            with lock:
+                owners = list(state.get(identity, ()))
+            for ws in owners:
+                try:
+                    error = self.serial_recordings.capture(ws, identity, payload) or error
+                except Exception as exc:
+                    error = f'串口日志写入失败，已停止记录：{exc}'
+        if error:
+            payload = dict(payload, recordingError=error)
+        self._broadcast_async(payload)
+
     def _on_terminal_output(self, key: str, data: bytes):
         agent = getattr(self, 'agent', None)
         if agent:
@@ -608,9 +673,18 @@ class ManagerServer(AdbServiceMixin):
     async def _broadcast(self, payload: dict):
         if not self.clients:
             return
+        identity = tuple(payload['identity']) if payload.get('identity') else None
+        if identity is None:
+            targets = self.clients
+        else:
+            # 串口数据只发给打开该接入的页面，不广播给其他窗口。
+            targets = {ws for ws in self.clients
+                       if identity in getattr(ws, '_serial_gui_sessions', ())}
+            if not targets:
+                return
         msg = json.dumps(payload)
         dead = set()
-        for ws in self.clients:
+        for ws in targets:
             try:
                 await ws.send(msg)
             except Exception:
@@ -903,6 +977,7 @@ class ManagerServer(AdbServiceMixin):
                             {'sessionId': session_id}, caller='gui')
                 except Exception as exc:
                     log('SERIAL', f'界面结束时关闭串口接入失败：{type(exc).__name__}: {exc}')
+            self._serial_owner_drop_ws(ws)
             await self._run_blocking(self.serial_recordings.close_owner, ws)
             await self._run_blocking(self.desktop_terminals.close_all,ws)
             log('WS', f'client disconnected {ws.remote_address}')
@@ -1102,13 +1177,16 @@ class ManagerServer(AdbServiceMixin):
                         if tool == 'serial' and result.get('success'):
                             sessions = getattr(ws, '_serial_gui_sessions', set())
                             data = result.get('data') or {}
+                            identity = (target['local'], target.get('nodeId', ''),
+                                        data.get('sessionId') or arguments.get('sessionId', ''))
                             if action == 'open' and data.get('sessionId') and not data.get('closed'):
-                                sessions.add((target['local'], target.get('nodeId', ''), data['sessionId']))
+                                sessions.add(identity)
+                                if not target['local'] and data.get('serialPushProtocol') == 1:
+                                    self._serial_owner_add(identity, ws)
                             elif action == 'close':
-                                identity = (target['local'], target.get('nodeId', ''), arguments.get('sessionId', ''))
                                 sessions.discard(identity)
                                 getattr(ws, '_serial_transfer_sessions', set()).discard(identity)
-                            identity = (target['local'], target.get('nodeId', ''), arguments.get('sessionId', ''))
+                                self._serial_owner_remove(identity, ws)
                             if action == 'read':
                                 error = await self._run_blocking(self.serial_recordings.capture, ws, identity, data)
                                 if error:

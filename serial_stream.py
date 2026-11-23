@@ -2,6 +2,7 @@
 from tool_errors import RemoteToolError
 import base64
 import json
+import os
 import threading
 import time
 
@@ -9,6 +10,12 @@ import relay
 from serial_terminal import input_bytes
 
 ACK_WAIT_SECONDS = 10
+
+
+def push_enabled():
+    """远程串口输出推送开关；关闭后退回轮询与同步回执。"""
+    return str(os.environ.get('DEVMUX_SERIAL_PUSH', '1')).strip().lower() not in (
+        '0', 'false', 'off', 'no')
 
 
 class ByteBuffer:
@@ -74,6 +81,7 @@ class SlaveSerialStream:
             while not self.stop_flag.is_set():
                 self.authorize()
                 if time.monotonic()-last_input>1800:raise RuntimeError('串口流闲置超过30分钟')
+                wrote=False
                 pending+=reader.read_new(131072)
                 if reader.rebuilt or len(pending)>512*1024:raise RuntimeError('串口输入流重建或帧过长，拒绝重放')
                 while b'\n' in pending:
@@ -92,9 +100,15 @@ class SlaveSerialStream:
                         # 输入回执必须发布，即使控制状态没有变化。
                         self.channel.write_meta(self.meta,in_place=True)
                     except Exception as exc:
-                        self.meta.update(ackSeq=seq,ackSuccess=False,ackError=str(exc),ackBytes=0)
+                        # failedSeq 是粘滞字段：主控异步核对回执时不能因为后续帧成功而漏掉失败。
+                        self.meta.update(ackSeq=seq,ackSuccess=False,ackError=str(exc),ackBytes=0,
+                            failedSeq=seq,failedError=str(exc))
                         self.channel.write_meta(self.meta,in_place=True)
+                    if operation=='write':wrote=True
                     if operation=='close':return
+                # 设备通常微秒级回显；先让出一小段时间再读，省掉整轮 15ms 等待。
+                # Windows 上 Event.wait 的小超时会被量化到 ~15.6ms，短等待必须用 sleep。
+                if wrote:time.sleep(.002)
                 output=self.call('read',{'cursor':cursor,'limit':65536})
                 raw=base64.b64decode(output['data'])
                 if raw:
@@ -123,13 +137,37 @@ class SlaveSerialStream:
 
 
 class MasterSerialStream:
-    def __init__(self,node,peer,opened,caller):
+    def __init__(self,node,peer,opened,caller,push=False,sink=None):
         self.node,self.peer,self.caller=node,peer,caller
         self.identifier=opened['sessionId'];self.binding=self.current_binding()
         self.channel=relay.RelayQueue.for_peer(node.channel_root(peer),peer).stream('serial-'+self.identifier)
         self.tail=self.channel.output_tail();self.buffer=ByteBuffer(opened.get('firstCursor',0))
         self.meta=dict(opened);self.sequence=0;self.pending=b'';self.write_lock=threading.Lock();self.read_lock=threading.Lock()
         self.next_meta=0;self.next_keepalive=0;self.uncertain=False;self.missing_since=None
+        self.node_id=self.binding[1]
+        # 推送只在主控 GUI 会话启用；Agent 会话保持原有请求-响应语义。
+        self.push=bool(push and sink is not None and caller=='gui')
+        self.sink=sink if self.push else None
+        self.thread=None;self.stop_flag=threading.Event();self.wake_event=threading.Event()
+        self.ack_lock=threading.Lock()
+        self.pending_acks={};self.reported_failed=0;self.pushed_uncertain=False
+        self.last_activity=time.monotonic();self.last_input=0.0
+
+    @property
+    def key(self):
+        return f'serial:computer:{self.node_id}:{self.identifier}'
+
+    def start(self):
+        if not self.push or self.thread is not None or self.stop_flag.is_set():return
+        self.thread=threading.Thread(target=self.pump,daemon=True,
+            name='serial-push-'+self.identifier[:8])
+        self.thread.start()
+
+    def stop(self,wait=True):
+        self.stop_flag.set();self.wake_event.set()
+        thread=self.thread
+        if thread is not None and wait and threading.current_thread() is not thread:
+            thread.join(timeout=3)
 
     def current_binding(self):
         beat=self.node._peers.get(self.peer);record=self.node.pairing.get(beat.nodeId) if beat else None
@@ -151,10 +189,102 @@ class MasterSerialStream:
             if (meta.get('controlRevision',0)>=self.meta.get('controlRevision',0)
                     and meta.get('ackSeq',0)>=self.meta.get('ackSeq',0)):
                 self.meta=meta
-                # 明确的当前序号回执解除未知结果；不重放原输入。
-                if self.uncertain and meta.get('ackSeq')==self.sequence:
+                # 明确的当前序号回执解除未知结果；不重放原输入。推送模式锁存失败，直到重开。
+                if not self.push and self.uncertain and meta.get('ackSeq')==self.sequence:
                     self.uncertain=False
-        self.next_meta=time.monotonic()+.075
+        self.next_meta=time.monotonic()+(.075 if not self.push else (.1 if self.pending_acks else .3))
+
+    def transient_offline(self):
+        """目标离线或连接尚未验证：保持线程等待心跳，不当作永久失败。"""
+        try:
+            return (bool(self.node._peer_offline_reason(self.peer))
+                or not self.node.connection_ready(self.peer))
+        except Exception:
+            return False
+
+    def push_payload(self,data=None,error='',transient=False):
+        payload={**self.meta,'type':'serial-data','key':self.key,
+            'identity':[False,self.node_id,self.identifier],
+            'data':base64.b64encode(data).decode('ascii') if data else '',
+            'nextCursor':self.buffer.total,'inputUncertain':bool(self.uncertain),
+            'serialStreamProtocol':1,'serialPushProtocol':1}
+        if error:payload['error']=error
+        if transient:payload['transient']=True
+        return payload
+
+    def publish(self,data=None,error='',transient=False):
+        if self.sink is None:return
+        try:self.sink(self.push_payload(data,error,transient))
+        except Exception:pass
+
+    def check_acks(self):
+        """异步写入的回执核对：失败或超时立即锁存并推给界面，不自动重发。"""
+        if not self.push:return
+        ack=self.meta.get('ackSeq',0)
+        with self.ack_lock:
+            failed=self.meta.get('failedSeq',0)
+            if type(failed) is int and failed>self.reported_failed:
+                self.reported_failed=failed
+                self.pending_acks.clear();self.uncertain=True
+            # 旧从机没有 failedSeq：只能在读到时按当前回执判断，作为降级路径。
+            if (ack>=self.sequence and self.sequence>self.reported_failed
+                    and not self.meta.get('ackSuccess',True)):
+                self.reported_failed=self.sequence
+                self.pending_acks.clear();self.uncertain=True
+            for seq in [item for item in self.pending_acks if item<=ack]:
+                self.pending_acks.pop(seq,None)
+            if (self.pending_acks
+                    and time.monotonic()-min(self.pending_acks.values())>ACK_WAIT_SECONDS):
+                self.pending_acks.clear();self.uncertain=True
+
+    def pump(self):
+        """常驻读取 .out 并推给 GUI；本线程是该会话唯一的 .out 消费者。"""
+        try:
+            while not self.stop_flag.is_set():
+                try:
+                    self.check()
+                except PermissionError as exc:
+                    if not self.transient_offline():raise
+                    self.publish(error=str(exc),transient=True)
+                    self.stop_flag.wait(1)
+                    continue
+                now=time.monotonic()
+                if now>=self.next_keepalive and self.write_lock.acquire(blocking=False):
+                    try:self._append({'action':'keepalive'})
+                    finally:self.write_lock.release()
+                if now>=self.next_meta:self.update_meta()
+                received=[]
+                self.pending+=self.tail.read_new(262144)
+                if self.tail.rebuilt or len(self.pending)>1024*1024:
+                    raise RuntimeError('串口输出流重建或过长，拒绝重放')
+                while b'\n' in self.pending:
+                    frame,self.pending=self.pending.split(b'\n',1);message=json.loads(frame)
+                    raw=base64.b64decode(message['data'],validate=True)
+                    self.buffer.append(message['cursor'],raw);received.append(raw)
+                self.check_acks()
+                if received:
+                    self.last_activity=now;self.publish(b''.join(received))
+                elif self.uncertain!=self.pushed_uncertain:self.publish()
+                self.pushed_uncertain=self.uncertain
+                if self.meta.get('closed') or self.meta.get('state') not in (None,'running'):
+                    self.publish();break
+                # 有输入在途或刚输入按 10ms 追输出；刚有数据按 20ms；纯空闲等到写入唤醒或 1 秒。
+                # Event.wait 的小超时在 Windows 会被量化到 ~15.6ms；短节拍用 sleep，长空闲才等唤醒。
+                if received or self.pending_acks or time.monotonic()-self.last_input<.5:
+                    time.sleep(.01)
+                elif time.monotonic()-self.last_activity<1:
+                    time.sleep(.02)
+                else:
+                    self.wake_event.wait(1)
+                self.wake_event.clear()
+        except Exception as exc:
+            with self.ack_lock:
+                if self.pending_acks:self.uncertain=True
+                self.pending_acks.clear()
+            self.meta.update(state='closed',closed=True,writable=False,error=str(exc))
+            self.publish(error=str(exc))
+        finally:
+            self.thread=None
 
     def _append(self,message):
         if not self.channel.input_writer().append(json.dumps(message,ensure_ascii=False).encode('utf-8')+b'\n'):
@@ -163,6 +293,10 @@ class MasterSerialStream:
 
     def read(self,args):
         self.check()
+        if self.push:
+            # 推送模式下读取线程独占 .out；这里只读内存缓冲，供首次对齐与缺口补读。
+            return {**self.meta,**self.buffer.read(args.get('cursor',0),args.get('limit',32768)),
+                'serialStreamProtocol':1,'serialPushProtocol':1,'inputUncertain':self.uncertain}
         with self.read_lock:
             now=time.monotonic()
             if now>=self.next_keepalive and self.write_lock.acquire(blocking=False):
@@ -202,6 +336,13 @@ class MasterSerialStream:
                     arguments={'generation':arguments.get('generation'),'data':base64.b64encode(raw).decode('ascii'),'format':'base64'}
             self.sequence+=1;sequence=self.sequence
             self._append({'seq':sequence,'action':action,'args':arguments})
+            if self.push and action=='write':
+                # GUI 输入投递即返回；回执由读取线程异步核对，失败通过推送通知界面。
+                with self.ack_lock:
+                    self.pending_acks[sequence]=time.monotonic()
+                self.last_input=time.monotonic()
+                self.wake_event.set()
+                return dict(self.meta,queued=True,sequence=sequence)
             deadline=time.monotonic()+ACK_WAIT_SECONDS
             try:
                 while time.monotonic()<deadline:

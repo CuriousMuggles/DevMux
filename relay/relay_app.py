@@ -379,6 +379,7 @@ class RelayController(ControllerStatusMixin, ControllerSessionMixin, ControllerW
         on_devices_changed: Optional[Callable[[list, list], None]] = None,
         on_status: Optional[Callable[[dict], None]] = None,
         on_terminal_output: Optional[Callable[[str, bytes], None]] = None,
+        on_serial_data: Optional[Callable[[dict], None]] = None,
         on_terminal_exit: Optional[Callable[[str, str], None]] = None,
         on_event: Optional[Callable[[dict], None]] = None,
         on_peer_request: Optional[Callable[[dict], None]] = None,
@@ -414,6 +415,7 @@ class RelayController(ControllerStatusMixin, ControllerSessionMixin, ControllerW
         self.on_devices_changed = on_devices_changed
         self.on_status = on_status
         self.on_terminal_output = on_terminal_output
+        self.on_serial_data = on_serial_data
         self.on_terminal_exit = on_terminal_exit
         self.on_event = on_event
         self.on_peer_request = on_peer_request
@@ -679,6 +681,9 @@ class RelayController(ControllerStatusMixin, ControllerSessionMixin, ControllerW
             node = self.node
             self.node = None
             self._windows_clients.clear()
+            for stream in self._serial_clients.values():
+                try:stream.stop(wait=False)
+                except Exception:pass
             self._serial_clients.clear()
             self._sessions.clear()
             self._retired_sessions.clear()

@@ -114,6 +114,9 @@
     const pacingSupported = target.local || opened.serialWritePacingProtocol === 1;
     charDelay.disabled = !pacingSupported;
     let alive = true, failed = false, reconnecting = false, connectionLost = false, reading = false, cursor = 0, generation = opened.generation, pollTimer;
+    // 远程串口支持服务端推送时不再轮询 read，只保留 5 秒兜底对账。
+    const pushMode = !target.local && opened.serialPushProtocol === 1;
+    let reconcileTimer, catchingUp = false;
     let decoder = new TextDecoder('utf-8'), chain = Promise.resolve(), queueBytes = 0;
     let lastState = opened;
     let pendingReceipt = false, inputEpoch = 0, transferBusy = false, transferUI = null, configBusy = false;
@@ -214,10 +217,10 @@
       if (!reconnecting) { inputEpoch++; queueBytes = 0; }
       reconnecting = true; applyInputState();
       status.textContent = '目标暂时离线，等待心跳恢复；原接入有效时自动恢复，不重发输入';
-      pollTimer = setTimeout(poll, 1000);
+      if (!pushMode) pollTimer = setTimeout(poll, 1000);
     }
     function fail(message) {
-      failed = true; clearTimeout(pollTimer); status.textContent = message;
+      failed = true; clearTimeout(pollTimer); clearTimeout(reconcileTimer); status.textContent = message;
       transferUI?.stop(); recording.stop().catch(() => {}); applyInputState();
       term.options.disableStdin = true; command.disabled = true;
       for (const button of panel.querySelectorAll('.serial-control-toggle,.serial-send')) button.disabled = true;
@@ -239,6 +242,28 @@
       });
       return chain;
     }
+    function consumeOutput(output) {
+      if (reconnecting && output.state === 'running' && !output.closed) { reconnecting = false; statusSignature = ''; applyInputState(); }
+      if (output.droppedBytes) {
+        decoder = new TextDecoder(encoding.value);
+        term.writeln(`\r\n[历史已裁剪 ${output.droppedBytes} 字节]`);
+      }
+      // 推送与首次对齐可能并发到达；按游标裁剪，已显示的字节不重复写入。
+      const bytes = output.data ? Uint8Array.from(atob(output.data), ch => ch.charCodeAt(0)) : null;
+      const end = output.nextCursor || 0, start = end - (bytes ? bytes.length : 0);
+      if (end > cursor) {
+        const slice = bytes ? bytes.slice(Math.max(0, cursor - start)) : null;
+        if (slice && slice.length) { activeUntil = Date.now() + 1000; display(slice); }
+        cursor = end;
+      }
+      snapshot(output);
+      if (output.recordingError) recording.error(output.recordingError);
+      if ((output.state !== 'running' || output.closed) && !output.hasMore) {
+        if (format.value === 'text') term.write(decoder.decode());
+        fail(output.error || '串口接入已结束'); return true;
+      }
+      return false;
+    }
     async function poll() {
       if (!alive || failed || reading) return;
       reading = true;
@@ -251,18 +276,7 @@
           return;
         }
         const output = result.data;
-        if (reconnecting && output.state === 'running' && !output.closed) { reconnecting = false; statusSignature = ''; applyInputState(); }
-        if (output.droppedBytes) {
-          decoder = new TextDecoder(encoding.value);
-          term.writeln(`\r\n[历史已裁剪 ${output.droppedBytes} 字节]`);
-        }
-        if (output.data) { activeUntil = Date.now() + 1000; display(Uint8Array.from(atob(output.data), ch => ch.charCodeAt(0))); }
-        cursor = output.nextCursor; snapshot(output);
-        if (output.recordingError) recording.error(output.recordingError);
-        if ((output.state !== 'running' || output.closed) && !output.hasMore) {
-          if (format.value === 'text') term.write(decoder.decode());
-          fail(output.error || '串口接入已结束'); return;
-        }
+        if (consumeOutput(output)) return;
         pollTimer = setTimeout(poll, output.hasMore ? 0 : Date.now() < activeUntil ? 10 : 50);
       };
       try {
@@ -271,12 +285,65 @@
       } catch (error) { if (alive) fail(error.message || '串口读取失败'); }
       finally { reading = false; }
     }
+    async function catchUp() {
+      if (!alive || failed || catchingUp) return;
+      catchingUp = true;
+      try {
+        const result = await request('read', {cursor, limit: 32768});
+        if (alive && !failed && result.success) consumeOutput(result.data);
+      } catch (error) { /* 下一帧或对账重试 */ }
+      finally { catchingUp = false; }
+    }
+    function scheduleReconcile() {
+      clearTimeout(reconcileTimer);
+      if (!alive || failed) return;
+      reconcileTimer = setTimeout(async () => {
+        if (!alive || failed) return;
+        if (!catchingUp) await catchUp();
+        scheduleReconcile();
+      }, 5000);
+    }
+    async function startPush() {
+      try {
+        const result = await request('read', {cursor, limit: 32768});
+        if (!alive || failed) return;
+        if (!result.success) {
+          if (/^(目标已离线|串口电脑已离线或解除连接|目标连接尚未验证)/.test(result.output || '')) waitForHeartbeat();
+          else fail(result.output || '读取失败，请关闭后重新连接');
+          return;
+        }
+        if (consumeOutput(result.data)) return;
+      } catch (error) { if (alive) fail(error.message || '串口读取失败'); }
+      scheduleReconcile();
+    }
+    function receive(msg) {
+      if (!alive || failed) return;
+      if (msg.transient) { waitForHeartbeat(); return; }
+      const bytes = msg.data ? Uint8Array.from(atob(msg.data), ch => ch.charCodeAt(0)) : null;
+      const size = bytes ? bytes.length : 0;
+      const end = msg.nextCursor || 0, start = end - size;
+      if (start > cursor) catchUp();
+      else if (end > cursor) {
+        const slice = bytes.slice(Math.max(0, cursor - start));
+        if (slice.length) { activeUntil = Date.now() + 1000; display(slice); }
+        cursor = end;
+      }
+      if (reconnecting) { reconnecting = false; statusSignature = ''; applyInputState(); }
+      snapshot(msg);
+      if (msg.recordingError) recording.error(msg.recordingError);
+      if (msg.state !== 'running' || msg.closed) {
+        if (format.value === 'text') term.write(decoder.decode());
+        fail(msg.error || '串口接入已结束');
+      }
+    }
     const lineEnding = () => ({cr: '\r', lf: '\n', crlf: '\r\n', none: ''})[newline.value];
     function input(data, mode, selectedEncoding = encoding.value) {
       if (!alive || failed || reconnecting || pendingReceipt || transferBusy || configBusy || !data) return;
       activeUntil = Date.now() + 1000;
-      clearTimeout(pollTimer);
-      if (!reading) pollTimer = setTimeout(poll, 0);
+      if (!pushMode) {
+        clearTimeout(pollTimer);
+        if (!reading) pollTimer = setTimeout(poll, 0);
+      }
       if (queueBytes + data.length > 262144) { status.textContent = '输入队列已满，本次输入未发送'; return; }
       const interCharDelayMs = pacingSupported ? Number(charDelay.value) : 0;
       queueBytes += data.length;
@@ -392,7 +459,7 @@
     const observer = new ResizeObserver(resize); observer.observe(host);
     async function close() {
       if (!alive) return;
-      alive = false; clearTimeout(pollTimer); observer.disconnect();
+      alive = false; clearTimeout(pollTimer); clearTimeout(reconcileTimer); observer.disconnect();
       // 先发送幂等关闭，不能让界面销毁异常或旧输入的迟到回执阻止释放远程COM。
       // 已发出的请求由同一WS顺序处理，尚未执行的队列因alive=false被丢弃。
       const closing = ws && ws.readyState === WebSocket.OPEN ? request('close') : null;
@@ -420,7 +487,8 @@
     state.terminals[key] = {key, computer: target, serialPort: opened.port, term, fitAddon: fit, panel,
       header, xtermDiv: host, cmdTextarea: command, close, floatingWindow: null, nativeInput: terminalInput};
     terminalWindow = TerminalWindows.attach(key, panel, header, {width: 900, height: 620});
-    windows.set(key, {floating: terminalWindow, close, panel, term, sessionId, target, snapshot: () => lastState});
+    windows.set(key, {floating: terminalWindow, close, panel, term, sessionId, target,
+      snapshot: () => lastState, receive: pushMode ? receive : null});
     const restoreIdentity = JSON.stringify(['serial', target.target, String(opened.port).toUpperCase()]);
     TerminalWindows.remember(key, async () => {
       const existing = [...windows.values()].some(item => item.target.target === target.target &&
@@ -438,7 +506,7 @@
     }, restoreIdentity);
     updateDeviceTabs(); selectActiveDevice(key); applyLayout(state.layout); updateLayoutStatus(); updateStatusBar();
     snapshot(opened);
-    resize(); poll(); term.focus();
+    resize(); if (pushMode) startPush(); else poll(); term.focus();
   }
   el('window-serial').onclick = async () => { el('window-menu').style.display = 'none'; floating.show(); await context.refresh(); };
   el('serial-select-close').onclick = () => floating.hide();

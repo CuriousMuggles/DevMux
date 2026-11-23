@@ -1,7 +1,7 @@
 """应用版本与桌面标题；不用于中转或 MCP 协议协商。"""
 
-APP_VERSION = '3.2.2'
-FILE_VERSION = (3, 2, 2, 0)
+APP_VERSION = '3.2.3'
+FILE_VERSION = (3, 2, 3, 0)
 APP_TITLE = f'DevMux v{APP_VERSION}'
 
 

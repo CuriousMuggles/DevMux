@@ -6,7 +6,9 @@
 import asyncio
 import base64
 from collections import Counter
+from contextlib import nullcontext
 import json
+import os
 from pathlib import Path
 import statistics
 import sys
@@ -19,8 +21,8 @@ sys.path.insert(0, str(ROOT))
 from tests.test_serial_remote import RemoteTests
 
 
-def _patch_counters(counter):
-    """统计数据面四个门面的调用次数：写输入/读输入/写状态/读状态。"""
+def _patch_counters(counter, latency=0.0):
+    """统计数据面四个门面的调用次数，并可给每次共享目录操作注入固定时延。"""
     from unittest.mock import patch
     import relay.relay_stream as rs
 
@@ -35,6 +37,8 @@ def _patch_counters(counter):
         def make(inner=getattr(owner, name), key=label):
             def wrapper(*args, **kwargs):
                 counter[key] += 1
+                if latency:
+                    time.sleep(latency)
                 return inner(*args, **kwargs)
             return wrapper
         patches.append(patch.object(owner, name, make()))
@@ -44,6 +48,9 @@ def _patch_counters(counter):
 
 
 class EchoBreakdown(RemoteTests):
+    push_mode = False
+    latency = 0.0
+
     async def test_measure(self):
         if self.mode == 'loop':
             import serial
@@ -67,47 +74,63 @@ class EchoBreakdown(RemoteTests):
                 auth_stats['maxMs'] = max(auth_stats['maxMs'], cost * 1000.0)
 
         ss.SlaveSerialStream.authorize = timed_auth
+        self.pushes = []
+        if self.push_mode:
+            self.harness.master.on_serial_data = self.pushes.append
+        context = (nullcontext() if self.push_mode else
+                   __import__('unittest.mock', fromlist=['patch']).patch.dict(
+                       os.environ, {'DEVMUX_SERIAL_PUSH': '0'}))
         try:
-            opened = await self.gui('open', {'port': 'COM3', 'requestId': uuid.uuid4().hex})
-            session = opened['sessionId']
-            generation = opened['generation']
-            cursor = 0
+            with context:
+                opened = await self.gui('open', {'port': 'COM3', 'requestId': uuid.uuid4().hex})
+                session = opened['sessionId']
+                generation = opened['generation']
+                cursor = 0
 
-            warmup = 3
-            rounds = 20
-            ack_ms, echo_ms = [], []
-            counter = Counter()
-            patches = _patch_counters(counter)
-            try:
-                for index in range(warmup + rounds):
-                    raw = bytes([0x41 + (index % 26)])  # 一次按键 = 一个可打印字符
-                    t0 = time.perf_counter()
-                    await self.gui('write', dict(
-                        sessionId=session, generation=generation,
-                        format='base64', data=base64.b64encode(raw).decode()))
-                    t_ack = (time.perf_counter() - t0) * 1000.0
-                    received = bytearray()
-                    while len(received) < len(raw) and time.perf_counter() - t0 < 3:
-                        output = await self.gui('read', dict(sessionId=session, cursor=cursor))
-                        received.extend(base64.b64decode(output['data']))
-                        cursor = output['nextCursor']
-                        if len(received) < len(raw):
-                            await asyncio.sleep(.002)
-                    t_echo = (time.perf_counter() - t0) * 1000.0
-                    self.assertEqual(bytes(received), raw)
-                    if index >= warmup:
-                        ack_ms.append(t_ack)
-                        echo_ms.append(t_echo)
-            finally:
-                for item in patches:
-                    item.stop()
-            await self.gui('close', {'sessionId': session})
+                warmup = 3
+                rounds = 20
+                ack_ms, echo_ms = [], []
+                counter = Counter()
+                patches = _patch_counters(counter, self.latency)
+                try:
+                    for index in range(warmup + rounds):
+                        raw = bytes([0x41 + (index % 26)])  # 一次按键 = 一个可打印字符
+                        mark = len(self.pushes)
+                        t0 = time.perf_counter()
+                        await self.gui('write', dict(
+                            sessionId=session, generation=generation,
+                            format='base64', data=base64.b64encode(raw).decode()))
+                        t_ack = (time.perf_counter() - t0) * 1000.0
+                        received = bytearray()
+                        while len(received) < len(raw) and time.perf_counter() - t0 < 3:
+                            if self.push_mode:
+                                for item in self.pushes[mark:]:
+                                    received.extend(base64.b64decode(item.get('data') or ''))
+                                mark = len(self.pushes)
+                            else:
+                                output = await self.gui('read', dict(sessionId=session, cursor=cursor))
+                                received.extend(base64.b64decode(output['data']))
+                                cursor = output['nextCursor']
+                            if len(received) < len(raw):
+                                time.sleep(.002)
+                        t_echo = (time.perf_counter() - t0) * 1000.0
+                        self.assertEqual(bytes(received), raw)
+                        if index >= warmup:
+                            ack_ms.append(t_ack)
+                            echo_ms.append(t_echo)
+                finally:
+                    for item in patches:
+                        item.stop()
+                await self.gui('close', {'sessionId': session})
         finally:
             ss.SlaveSerialStream.authorize = original_auth
 
         self.result = dict(
             mode=self.mode,
+            pushMode=self.push_mode,
+            latencyMs=round(self.latency * 1000.0, 2),
             samples=rounds,
+            ackMode='queued' if self.push_mode else 'sync',
             ackP50=round(statistics.median(ack_ms), 2),
             ackP95=round(sorted(ack_ms)[int(rounds * .95) - 1], 2),
             ackMax=round(max(ack_ms), 2),
@@ -124,15 +147,21 @@ class EchoBreakdown(RemoteTests):
         )
 
 
-def run(label):
+def run(label, latency=0.0, push=False):
     results = {}
     for mode in ('fake', 'loop'):
         case = EchoBreakdown('test_measure')
         case.mode = mode
+        case.latency = latency
+        case.push_mode = push
         outcome = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite([case]))
         assert outcome.wasSuccessful(), outcome
         results[mode] = case.result
-    results['environment'] = '同机临时共享目录、GUI→WS→中转→串口服务、921600/50ms'
+    environment = '同机临时共享目录、GUI→WS→中转→串口服务、921600/50ms'
+    if latency:
+        environment += f'、每次共享目录操作注入 {latency * 1000:.0f}ms'
+    environment += '、推送模式' if push else '、轮询与同步回执'
+    results['environment'] = environment
     output = ROOT / '.agent-runtime' / 'serial-echo'
     output.mkdir(parents=True, exist_ok=True)
     (output / (label + '.json')).write_text(
@@ -141,4 +170,9 @@ def run(label):
 
 
 if __name__ == '__main__':
-    run(sys.argv[1] if len(sys.argv) > 1 else 'baseline')
+    args = sys.argv[1:]
+    label = args[0] if args and not args[0].startswith('--') else 'baseline'
+    latency_ms = 0.0
+    if '--latency-ms' in args:
+        latency_ms = float(args[args.index('--latency-ms') + 1])
+    run(label, latency=latency_ms / 1000.0, push='--push' in args)

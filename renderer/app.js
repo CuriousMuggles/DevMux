@@ -125,6 +125,13 @@ function handleWSMessage(msg) {
       break;
     }
 
+    case 'serial-data': {
+      const integration = window.SerialIntegration;
+      const record = integration && integration.windows.get(msg.key);
+      if (record && record.receive) record.receive(msg);
+      break;
+    }
+
     case 'terminal-switch':
     case 'terminal-exit': {
       const key = msg.key;

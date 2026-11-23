@@ -88,6 +88,7 @@ def remote_call(controller, node_id, tool, action, arguments, *, caller='agent')
             if action in ('write','control','close'):
                 data=client.send(action,arguments)
                 if action=='close':
+                    client.stop(wait=False)
                     with controller._lock:clients.pop(key,None)
                 return dict(success=True,output='',data=data)
     result = node.submit(peer, relay.KIND_EXTENSION_TOOL,
@@ -106,14 +107,22 @@ def remote_call(controller, node_id, tool, action, arguments, *, caller='agent')
     opened=data.get('data',{})
     if tool=='serial' and action=='open' and opened.get('serialStreamProtocol')==1:
         import re
-        from serial_stream import MasterSerialStream
+        from serial_stream import MasterSerialStream, push_enabled
         identifier=opened.get('sessionId','')
         if not re.fullmatch('[a-f0-9]{32}',identifier) or opened.get('streamId')!='serial-'+identifier:
             raise ValueError('从机返回非法串口流标识')
+        sink=getattr(controller,'on_serial_data',None)
+        pushing=bool(push_enabled() and caller=='gui' and sink is not None)
         with controller._lock:
             if controller.node is not node:raise RuntimeError('打开串口期间节点已停止')
             if not hasattr(controller,'_serial_clients'):controller._serial_clients={}
             key=(node_id,identifier,caller)
-            if key not in controller._serial_clients:
-                controller._serial_clients[key]=MasterSerialStream(node,peer,opened,caller)
+            client=controller._serial_clients.get(key)
+            if client is None:
+                client=MasterSerialStream(node,peer,opened,caller,push=pushing,sink=sink)
+                controller._serial_clients[key]=client
+            elif pushing and not client.push:
+                client.push=True;client.sink=sink
+        if pushing and client.push:opened['serialPushProtocol']=1
+        client.start()
     return data
